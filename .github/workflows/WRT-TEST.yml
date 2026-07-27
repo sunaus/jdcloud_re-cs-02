@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 VIKINGYFY
+
+#CI
+name: WRT-TEST
+
+# CI plan
+on:
+  # manual compile
+  workflow_dispatch:
+    inputs:
+      CONFIG:
+        default: 'IPQ60XX-WIFI-YES'
+        required: true
+        type: choice
+        options:
+          - IPQ60XX-WIFI-YES
+      SOURCE:
+        default: 'VIKINGYFY/immortalwrt'
+        required: true
+        type: choice
+        options:
+          - VIKINGYFY/immortalwrt
+          - immortalwrt/immortalwrt
+          - openwrt/openwrt
+          - qosmio/openwrt-ipq
+      BRANCH:
+        default: 'main'
+        required: true
+        type: string
+      PACKAGE:
+        required: false
+        type: string
+      TEST:
+        description: 'config files output only without compile firmware.'
+        default: 'true'
+        required: true
+        type: boolean
+
+# CI permissions
+permissions: write-all
+
+# CI jobs
+jobs:
+  config:
+    name: ${{inputs.CONFIG}}
+    # use WRT-CORE.yml
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      # compile config
+      WRT_CONFIG: ${{inputs.CONFIG}}
+      # default theme
+      WRT_THEME: bootstrap
+      # default hostname
+      WRT_NAME: AX6600
+      # default wifi ssid
+      WRT_SSID: AX6600
+      # default wifi password
+      WRT_WORD: 12345678
+      # default IP
+      WRT_IP: 192.168.1.1
+      # default password
+      WRT_PW: NULL
+      # source code link
+      WRT_REPO: https://github.com/${{inputs.SOURCE}}.git
+      # branch
+      WRT_BRANCH: ${{inputs.BRANCH}}
+      # name
+      WRT_SOURCE: ${{inputs.SOURCE}}
+      # packages
+      WRT_PACKAGE: ${{inputs.PACKAGE}}
+      # config files output only
+      WRT_TEST: ${{inputs.TEST}}

@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 VIKINGYFY
+
+# CI for JDCloud Athena AX6600 jdcloud_re-cs-02
+name: QCA-ALL
+
+# CI plan
+on:
+  # manual compile
+  workflow_dispatch:
+    inputs:
+      PACKAGE:
+        description: 'manaul update packages list, use \n for mulitple items.'
+        required: false
+        type: string
+      TEST:
+        description: 'Only config for output, no firmware compile.'
+        default: 'false'
+        required: false
+        type: boolean
+
+# CI permissions
+permissions: write-all
+
+# CI jobs
+jobs:
+  config:
+    name: ${{matrix.CONFIG}}
+    strategy:
+      fail-fast: false
+      #max-parallel: 3
+      matrix:
+        CONFIG: [IPQ60XX-WIFI-YES]
+        # OpenWrt snapshot green light without lan/wifi, go to ImmortalWrt (NSS-DP) by default
+        SOURCE: [VIKINGYFY/immortalwrt]
+        BRANCH: [main]
+
+    # change public kernel WRT-CORE.yml
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      # compile config
+      WRT_CONFIG: ${{matrix.CONFIG}}
+      # default theme
+      WRT_THEME: bootstrap
+      # default hostname
+      WRT_NAME: AX6600
+      # defualt wifi ssid
+      WRT_SSID: AX6600
+      # default wifi password
+      WRT_WORD: 12345678
+      # default IP
+      WRT_IP: 192.168.1.1
+      # default password
+      WRT_PW: 无
+      # source code link
+      WRT_REPO: https://github.com/${{matrix.SOURCE}}.git
+      # branch
+      WRT_BRANCH: ${{matrix.BRANCH}}
+      # source code name
+      WRT_SOURCE: ${{matrix.SOURCE}}
+      # packages
+      WRT_PACKAGE: ${{inputs.PACKAGE}}
+      # config file only
+      WRT_TEST: ${{inputs.TEST}}
