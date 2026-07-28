@@ -1,17 +1,17 @@
 # AX6600 (jdcloud_re-cs-02) OpenWRT-CI
 
-Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification, only for JDCloud Athena AX6600（`jdcloud_re-cs-02`）。
+Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification, only for JDCloud Athena AX6600 (`jdcloud_re-cs-02`)
 
 ## source code
 
-- **Default**: ImmortalWrt（VIKINGYFY）— https://github.com/VIKINGYFY/immortalwrt.git（`main`，NSS-DP）
+- **Default**: ImmortalWrt (VIKINGYFY) - https://github.com/VIKINGYFY/immortalwrt.git (`main`，NSS-DP)
 - ImmortalWrt: https://github.com/immortalwrt/immortalwrt.git
 - OpenWrt: snapshot testing **Green light without LAN/Wi-Fi**; `WRT-TEST` for testing only, maybe not working
 
 ## Packages
 
 - Device: `Config/IPQ60XX-WIFI-YES.txt` → Only `jdcloud_re-cs-02`
-- Packages: `Config/GENERAL.txt`（simplified, syncthing/podman/samba/acme/ddns/smartdns/sqm/wg/netifyd can be installed later）
+- Packages: `Config/GENERAL.txt` (simplified, syncthing/podman/samba/acme/ddns/smartdns/sqm/wg/netifyd can be installed later)
 - Driver: `ath11k-firmware-*-ddwrt`, `ipq-wifi-jdcloud_re-cs-02`, `luci-app-athena-led`
 
 ## Flash
