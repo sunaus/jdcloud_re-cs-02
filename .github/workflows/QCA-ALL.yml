@@ -51,7 +51,7 @@ jobs:
       # default IP
       WRT_IP: 192.168.1.1
       # default password
-      WRT_PW: 无
+      WRT_PW: NULL
       # source code link
       WRT_REPO: https://github.com/${{matrix.SOURCE}}.git
       # branch
