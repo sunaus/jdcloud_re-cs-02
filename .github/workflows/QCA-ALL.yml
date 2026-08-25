@@ -15,7 +15,7 @@ on:
         type: string
       TEST:
         description: 'Only config for output, no firmware compile.'
-        default: 'false'
+        default: false
         required: false
         type: boolean
 
@@ -61,4 +61,4 @@ jobs:
       # packages
       WRT_PACKAGE: ${{inputs.PACKAGE}}
       # config file only
-      WRT_TEST: ${{inputs.TEST}}
+      WRT_TEST: ${{inputs.TEST || false }}
