@@ -42,7 +42,8 @@ on:
         type: string
       WRT_TEST:
         required: false
-        type: string
+        default: false
+        type: boolean
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
