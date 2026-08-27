@@ -145,7 +145,7 @@ jobs:
 
       - name: Restore Build Cache
         id: cache-restore
-        if: env.WRT_TEST != 'true'
+        if: ${{ !inputs.WRT_TEST }}
         uses: actions/cache/restore@main
         with:
           key: ${{env.WRT_CACHE_KEY}}
@@ -158,7 +158,7 @@ jobs:
             ./wrt/staging_dir/tool*
 
       - name: Prepare Restored Build Cache
-        if: env.WRT_TEST != 'true' && steps.cache-restore.outputs.cache-matched-key != ''
+        if: ${{ !inputs.WRT_TEST && steps.cache-restore.outputs.cache-matched-key != '' }}
         run: |
           find "./wrt/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r DIR; do
             find "$DIR" -type f -exec touch {} +
@@ -210,7 +210,7 @@ jobs:
           make clean -j$(nproc)
 
       - name: Download Packages
-        if: env.WRT_TEST != 'true'
+        if: ${{ !inputs.WRT_TEST }}
         run: |
           cd ./wrt/
 
@@ -222,7 +222,7 @@ jobs:
           make download -j$(nproc) || make download -j1 V=s
 
       - name: Compile Firmware
-        if: env.WRT_TEST != 'true'
+        if: ${{ !inputs.WRT_TEST }}
         run: |
           cd ./wrt/
 
@@ -230,7 +230,7 @@ jobs:
 
       - name: Check Cache Source
         id: cache-source
-        if: env.WRT_TEST != 'true' && success()
+        if: ${{ !inputs.WRT_TEST && success() }}
         run: |
           REMOTE_HASH=$(git ls-remote "$WRT_REPO" "refs/heads/$WRT_BRANCH" | awk 'NR == 1 {print $1}')
           if [ -n "$REMOTE_HASH" ] && [ "$REMOTE_HASH" = "$WRT_HASH" ]; then
@@ -241,7 +241,7 @@ jobs:
           fi
 
       - name: Save Build Cache
-        if: env.WRT_TEST != 'true' && success() && steps.cache-source.outputs.current == 'true'
+        if: ${{ !inputs.WRT_TEST && success() && steps.cache-source.outputs.current == 'true' }}
         uses: actions/cache/save@main
         with:
           key: ${{env.WRT_CACHE_KEY}}
@@ -318,7 +318,7 @@ jobs:
   cache-rollover:
     name: Roll cache generations
     needs: core
-    if: env.WRT_TEST != 'true' && needs.core.result == 'success'
+    if: ${{ !inputs.WRT_TEST && needs.core.result == 'success' }}
     runs-on: ubuntu-latest
     concurrency:
       group: wrt-cache-rollover-${{inputs.WRT_SOURCE}}-${{inputs.WRT_BRANCH}}
