@@ -78,13 +78,12 @@ jobs:
         run: |
           sudo -E apt-get -yqq purge firefox
           sudo -E apt-get -yqq update
+          sudo -E apt-get -yqq full-upgrade
           sudo -E apt-get -yqq autoremove --purge
           sudo -E apt-get -yqq autoclean
           sudo -E apt-get -yqq clean
           sudo -E apt-get -yqq install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dos2unix libfuse-dev
           sudo bash -c 'bash <(curl -sL --connect-timeout 10 --max-time 30 https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-          sudo pkill -9 -f haveged || true
-          sudo pkill -9 -f irqbalance || true
           sudo ln -sf /usr/share/zoneinfo/Australia/Sydney /etc/localtime
 
           sudo mkdir -p /mnt/build_wrt
