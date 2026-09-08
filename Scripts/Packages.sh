@@ -42,10 +42,43 @@ UPDATE_PACKAGE() {
 	fi
 }
 
-# ImmortalWrt: athena-led @ package/emortal/;
-# If need any package from third party, remove comment and add it
-# UPDATE_PACKAGE "name" "user/repos" "branch" "pkg|name" "deleted name"
+# UPDATE_PACKAGE "包名" "项目地址" "项目分支" "pkg/name，可选，pkg为从大杂烩中单独提取包名插件；name为重命名为包名"
+UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12"
+UPDATE_PACKAGE "aurora" "eamonxg/luci-theme-aurora" "master"
+UPDATE_PACKAGE "aurora-config" "eamonxg/luci-app-aurora-config" "master"
+UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "master"
+UPDATE_PACKAGE "kucat-config" "sirpdboy/luci-app-kucat-config" "master"
+UPDATE_PACKAGE "noobwrt" "nooblk-98/luci-theme-noobwrt" "master"
+UPDATE_PACKAGE "shadcn" "eamonxg/luci-theme-shadcn" "main"
+UPDATE_PACKAGE "theme-fluent" "LazuliKao/luci-theme-fluent" "main"
 
+UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
+UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
+UPDATE_PACKAGE "openclash" "vernesong/OpenClash" "dev" "pkg"
+UPDATE_PACKAGE "passwall" "Openwrt-Passwall/openwrt-passwall" "main" "pkg"
+UPDATE_PACKAGE "passwall2" "Openwrt-Passwall/openwrt-passwall2" "main" "pkg"
+
+UPDATE_PACKAGE "ddns-go" "sirpdboy/luci-app-ddns-go" "main"
+UPDATE_PACKAGE "diskman" "sbwml/luci-app-diskman" "main"
+UPDATE_PACKAGE "diskmanager" "4IceG/luci-app-mini-diskmanager" "main"
+UPDATE_PACKAGE "easytier" "EasyTier/luci-app-easytier" "main"
+UPDATE_PACKAGE "mosdns" "sbwml/luci-app-mosdns" "v5" "" "v2dat"
+UPDATE_PACKAGE "netspeedtest" "sirpdboy/netspeedtest" "main" "" "homebox ookla-speedtest"
+UPDATE_PACKAGE "netwizard" "sirpdboy/luci-app-netwizard" "main"
+UPDATE_PACKAGE "openlist2" "sbwml/luci-app-openlist2" "main"
+UPDATE_PACKAGE "partexp" "sirpdboy/luci-app-partexp" "main"
+UPDATE_PACKAGE "qbittorrent" "sbwml/luci-app-qbittorrent" "master" "" "qt6base qt6tools rblibtorrent"
+UPDATE_PACKAGE "qmodem" "FUjr/QModem" "main"
+UPDATE_PACKAGE "quickfile" "sbwml/luci-app-quickfile" "main"
+UPDATE_PACKAGE "timecontrol" "sirpdboy/luci-app-timecontrol" "main"
+UPDATE_PACKAGE "viking" "VIKINGYFY/packages" "main" "" "axonhub gecoosac sing-box luci-app-homeproxy luci-app-timewol luci-app-wolplus luci-app-wolultra"
+UPDATE_PACKAGE "vnt" "lmq8267/luci-app-vnt" "main"
+
+UPDATE_PACKAGE "airpi3000m" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
+UPDATE_PACKAGE "h5000m" "LianXia233/luci-app-h5000m-netmode" "main"
+UPDATE_PACKAGE "qmodem-generic" "LianXia233/luci-app-qmodem-generic" "main"
+
+# ImmortalWrt: athena-led @ package/emortal/;
 if [ -d ./emortal/luci-app-athena-led ] || [ -d ./luci-app-athena-led ]; then
 	echo "luci-app-athena-led already present, skip fetch."
 else

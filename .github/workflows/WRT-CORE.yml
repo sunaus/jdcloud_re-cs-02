@@ -67,7 +67,6 @@ jobs:
     outputs:
       cache_prefix: ${{steps.initialize-values.outputs.cache_prefix}}
       cache_key: ${{steps.clone-code.outputs.cache_key}}
-      source_hash: ${{steps.clone-code.outputs.source_hash}}
     steps:
       - name: Checkout Projects
         uses: actions/checkout@main
@@ -75,15 +74,15 @@ jobs:
       - name: Initialization Environment
         env:
           DEBIAN_FRONTEND: noninteractive
+          NEEDRESTART_MODE: a
         run: |
-          sudo -E apt -yqq purge firefox
-          sudo -E apt -yqq update
-          sudo -E apt -yqq full-upgrade
-          sudo -E apt -yqq autoremove --purge
-          sudo -E apt -yqq autoclean
-          sudo -E apt -yqq clean
-          sudo -E apt -yqq install dos2unix libfuse-dev
-          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+          sudo -E apt-get -yqq purge firefox
+          sudo -E apt-get -yqq update
+          sudo -E apt-get -yqq autoremove --purge
+          sudo -E apt-get -yqq autoclean
+          sudo -E apt-get -yqq clean
+          sudo -E apt-get -yqq install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dos2unix libfuse-dev
+          sudo bash -c 'bash <(curl -sL --connect-timeout 10 --max-time 30 https://build-scripts.immortalwrt.org/init_build_environment.sh)'
           sudo -E systemctl daemon-reload
           sudo -E timedatectl set-timezone "Australia/Sydney"
 
@@ -125,7 +124,6 @@ jobs:
           echo "WRT_HASH=$WRT_HASH" >> $GITHUB_ENV
           echo "WRT_CACHE_KEY=$WRT_CACHE_PREFIX-$WRT_HASH" >> $GITHUB_ENV
           echo "cache_key=$WRT_CACHE_PREFIX-$WRT_HASH" >> "$GITHUB_OUTPUT"
-          echo "source_hash=$WRT_HASH" >> "$GITHUB_OUTPUT"
 
           # GitHub Action remove mirror for china mainland (keep JSON)
           python3 "$GITHUB_WORKSPACE/Scripts/FixMirrors.py" ./scripts/projectsmirrors.json
@@ -217,20 +215,8 @@ jobs:
 
           make -j$(nproc) || make -j1 V=s
 
-      - name: Check Cache Source
-        id: cache-source
-        if: ${{ !inputs.WRT_TEST && success() }}
-        run: |
-          REMOTE_HASH=$(git ls-remote "$WRT_REPO" "refs/heads/$WRT_BRANCH" | awk 'NR == 1 {print $1}')
-          if [ -n "$REMOTE_HASH" ] && [ "$REMOTE_HASH" = "$WRT_HASH" ]; then
-            echo "current=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "skip cache save: source branch is now ${REMOTE_HASH:-unknown}, built $WRT_HASH"
-          fi
-
       - name: Save Build Cache
-        if: ${{ !inputs.WRT_TEST && success() && steps.cache-source.outputs.current == 'true' && steps.cache-restore.outputs.cache-hit != 'true' }}
+        if: ${{ !inputs.WRT_TEST && success() && steps.cache-restore.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@main
         with:
           key: ${{env.WRT_CACHE_KEY}}
@@ -315,32 +301,12 @@ jobs:
     env:
       GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
       GH_REPO: ${{github.repository}}
-      WRT_REPO: ${{inputs.WRT_REPO}}
-      WRT_BRANCH: ${{inputs.WRT_BRANCH}}
       WRT_CACHE_PREFIX: ${{needs.core.outputs.cache_prefix}}
       WRT_CACHE_KEY: ${{needs.core.outputs.cache_key}}
-      WRT_SOURCE_HASH: ${{needs.core.outputs.source_hash}}
     steps:
       - name: Roll Build Cache
         run: |
           set -euo pipefail
-
-          delete_cache_key() {
-            local exact_key="$1"
-            gh cache list --repo "$GH_REPO" --key "$exact_key" --ref "$GITHUB_REF" --limit 100 --json id,key --jq '.[] | [.id, .key] | @tsv' |
-              while IFS=$'\t' read -r CACHE_ID CACHE_KEY; do
-                [ "$CACHE_KEY" = "$exact_key" ] || continue
-                gh cache delete "$CACHE_ID" --repo "$GH_REPO" ||
-                  echo "warning: failed to delete cache $CACHE_ID ($CACHE_KEY)"
-              done
-          }
-
-          REMOTE_HASH=$(git ls-remote "$WRT_REPO" "refs/heads/$WRT_BRANCH" | awk 'NR == 1 {print $1}')
-          if [ -z "$REMOTE_HASH" ] || [ "$REMOTE_HASH" != "$WRT_SOURCE_HASH" ]; then
-            echo "remove stale cache generation: source branch is now ${REMOTE_HASH:-unknown}, built $WRT_SOURCE_HASH"
-            delete_cache_key "$WRT_CACHE_KEY"
-            exit 0
-          fi
 
           CURRENT_CACHE_KEYS=$(gh cache list --repo "$GH_REPO" --key "$WRT_CACHE_KEY" --ref "$GITHUB_REF" --limit 100 --json key --jq '.[].key')
           CURRENT_CACHE_FOUND=0
