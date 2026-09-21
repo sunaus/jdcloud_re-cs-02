@@ -1,6 +1,12 @@
 # AX6600 (jdcloud_re-cs-02) OpenWRT-CI
 
-Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification, only for JDCloud Athena AX6600 (`jdcloud_re-cs-02`)
+Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification (aligned with commit `8795a08`), dedicated to JDCloud Athena AX6600 (`jdcloud_re-cs-02`).
+
+## Features
+
+- **SONiC Fullcone NAT**: Kernel-level Full Cone NAT (NAT1) via `fullconenat-sonic` and `luci-app-fullconenat-sonic`
+- **STUN Client**: `stuntman-client` included for testing NAT mapping and filtering types
+- **LED Control**: JDCloud Athena front RGB LED control via `luci-app-athena-led`
 
 ## source code
 

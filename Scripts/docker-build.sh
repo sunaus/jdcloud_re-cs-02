@@ -45,11 +45,8 @@ done
 ./scripts/feeds install -a
 
 echo "==> packages / handles"
-(
-	cd package
-	bash "$CI_DIR/Scripts/Packages.sh"
-	bash "$CI_DIR/Scripts/Handles.sh"
-)
+bash "$CI_DIR/Scripts/Packages.sh"
+bash "$CI_DIR/Scripts/Handles.sh"
 
 echo "==> patch factory image"
 bash "$CI_DIR/Scripts/PatchFactory.sh" "$WRT_DIR"
