@@ -99,7 +99,7 @@ else
 	echo " "
 	echo "Fetch luci-app-athena-led from VIKINGYFY/immortalwrt (sparse)"
 	rm -rf ./package/luci-app-athena-led ./_athena_src
-	git clone --depth=1 --filter=blob:none --sparse --branch owrt \
+	git clone --depth=1 --filter=blob:none --sparse --branch main \
 		https://github.com/VIKINGYFY/immortalwrt.git ./_athena_src
 	git -C ./_athena_src sparse-checkout set package/emortal/luci-app-athena-led
 	cp -a ./_athena_src/package/emortal/luci-app-athena-led ./package/luci-app-athena-led

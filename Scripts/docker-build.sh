@@ -22,7 +22,7 @@ export GITHUB_ENV="${GITHUB_ENV:-/tmp/github_env}"
 
 JOBS="${JOBS:-$(nproc)}"
 REPO_URL="${REPO_URL:-https://github.com/VIKINGYFY/immortalwrt.git}"
-REPO_BRANCH="${REPO_BRANCH:-owrt}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
 
 mkdir -p /build
 cd /build
