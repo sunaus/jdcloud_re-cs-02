@@ -25,7 +25,7 @@ on:
           - openwrt/openwrt
           - qosmio/openwrt-ipq
       BRANCH:
-        default: 'main'
+        default: 'owrt'
         required: true
         type: string
       PACKAGE:

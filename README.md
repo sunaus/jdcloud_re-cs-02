@@ -1,6 +1,6 @@
 # AX6600 (jdcloud_re-cs-02) OpenWRT-CI
 
-Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification (aligned with commit `8795a08`), dedicated to JDCloud Athena AX6600 (`jdcloud_re-cs-02`).
+Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification (aligned with commit `5d31706`), dedicated to JDCloud Athena AX6600 (`jdcloud_re-cs-02`).
 
 ## Features
 
@@ -10,7 +10,7 @@ Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplif
 
 ## source code
 
-- **Default**: ImmortalWrt (VIKINGYFY) - https://github.com/VIKINGYFY/immortalwrt.git (`main`, NSS-DP)
+- **Default**: ImmortalWrt (VIKINGYFY) - https://github.com/VIKINGYFY/immortalwrt.git (`owrt`, NSS-DP)
 - ImmortalWrt: https://github.com/immortalwrt/immortalwrt.git
 - OpenWrt: snapshot testing **Green light without LAN/Wi-Fi**; `WRT-TEST` for testing only, maybe not working
 

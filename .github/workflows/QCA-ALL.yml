@@ -33,7 +33,7 @@ jobs:
         CONFIG: [IPQ60XX-WIFI-YES]
         # OpenWrt snapshot green light without lan/wifi, go to ImmortalWrt (NSS-DP) by default
         SOURCE: [VIKINGYFY/immortalwrt]
-        BRANCH: [main]
+        BRANCH: [owrt]
 
     # change public kernel WRT-CORE.yml
     uses: ./.github/workflows/WRT-CORE.yml

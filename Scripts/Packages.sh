@@ -49,11 +49,11 @@ UPDATE_PACKAGE() {
 UPDATE_PACKAGE "argon" "sbwml/luci-theme-argon" "openwrt-25.12"
 UPDATE_PACKAGE "aurora" "eamonxg/luci-theme-aurora" "master"
 UPDATE_PACKAGE "aurora-config" "eamonxg/luci-app-aurora-config" "master"
+UPDATE_PACKAGE "fluent" "LazuliKao/luci-theme-fluent" "main"
+UPDATE_PACKAGE "footstrap" "VizzleTF/luci-theme-footstrap" "main"
 UPDATE_PACKAGE "kucat" "sirpdboy/luci-theme-kucat" "master"
 UPDATE_PACKAGE "kucat-config" "sirpdboy/luci-app-kucat-config" "master"
-UPDATE_PACKAGE "noobwrt" "nooblk-98/luci-theme-noobwrt" "master"
 UPDATE_PACKAGE "shadcn" "eamonxg/luci-theme-shadcn" "main"
-UPDATE_PACKAGE "theme-fluent" "LazuliKao/luci-theme-fluent" "main"
 
 UPDATE_PACKAGE "momo" "nikkinikki-org/OpenWrt-momo" "main"
 UPDATE_PACKAGE "nikki" "nikkinikki-org/OpenWrt-nikki" "main"
@@ -83,8 +83,13 @@ UPDATE_PACKAGE "natmapt" "muink/openwrt-natmapt" "master"
 UPDATE_PACKAGE "stuntman" "muink/openwrt-stuntman" "master"
 UPDATE_PACKAGE "luci-app-natmapt" "muink/luci-app-natmapt" "master"
 
-UPDATE_PACKAGE "airpi3000m" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
-UPDATE_PACKAGE "h5000m" "LianXia233/luci-app-h5000m-netmode" "main"
+UPDATE_PACKAGE "airpi3000m-fancontrol" "LianXia233/luci-app-airpi3000m-fancontrol" "main"
+UPDATE_PACKAGE "chfs" "LianXia233/luci-app-chfs" "main"
+UPDATE_PACKAGE "fm350" "LianXia233/luci-app-fm350" "main"
+UPDATE_PACKAGE "h5000m-netmode" "LianXia233/luci-app-h5000m-netmode" "main"
+UPDATE_PACKAGE "mt5700" "LianXia233/luci-app-mt5700" "main"
+UPDATE_PACKAGE "mt5700m" "LianXia233/luci-app-mt5700m" "main"
+UPDATE_PACKAGE "netmonitor" "LianXia233/luci-app-netmonitor" "main"
 UPDATE_PACKAGE "qmodem-generic" "LianXia233/luci-app-qmodem-generic" "main"
 
 # ImmortalWrt: athena-led @ package/emortal/;
@@ -94,7 +99,7 @@ else
 	echo " "
 	echo "Fetch luci-app-athena-led from VIKINGYFY/immortalwrt (sparse)"
 	rm -rf ./package/luci-app-athena-led ./_athena_src
-	git clone --depth=1 --filter=blob:none --sparse \
+	git clone --depth=1 --filter=blob:none --sparse --branch owrt \
 		https://github.com/VIKINGYFY/immortalwrt.git ./_athena_src
 	git -C ./_athena_src sparse-checkout set package/emortal/luci-app-athena-led
 	cp -a ./_athena_src/package/emortal/luci-app-athena-led ./package/luci-app-athena-led
