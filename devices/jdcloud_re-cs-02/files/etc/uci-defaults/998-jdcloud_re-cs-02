@@ -1,0 +1,12 @@
+# Same hostname and timezone as the VIKINGYFY branch images. Applied once,
+# like 999-QOL_config, so a sysupgrade keeping settings does not reset them.
+[ "$(uci -q get system.@system[0].jdcloud_defaults)" = 1 ] && exit 0
+
+uci -q batch << EOI
+set system.@system[0].hostname='AX6600'
+set system.@system[0].zonename='Australia/Sydney'
+set system.@system[0].timezone='AEST-10AEDT,M10.1.0,M4.1.0/3'
+set system.@system[0].jdcloud_defaults='1'
+EOI
+
+exit 0

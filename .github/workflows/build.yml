@@ -1,21 +1,11 @@
 name: Build
 
-# Builds the edma-nss images for every ipq807x and ipq60xx device, in six
-# groups and two flavours (default, and mesh on the 11.4 firmware line):
-#   check (upstream moved?) -> draft release -> build each group -> publish -> prune
-# All build parameters live in the `env:` block below and in devices/<group>/config.
+# Builds the edma-nss image for the JDCloud RE-CS-02 only, default flavour
+# (no mesh), on manual dispatch only:
+#   check -> draft release -> build -> publish -> prune
+# All build parameters live in the `env:` block below and in devices/jdcloud_re-cs-02/config.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'devices/**'
-      - '!devices/common-ppe/**'
-      - '!devices/ppe-*/**'
-      - 'scripts/**'
-      - '.github/workflows/build.yml'
-  schedule:
-    - cron: "0 */2 * * *"
 
 concurrency:
   group: build-${{ github.ref }}
@@ -31,9 +21,11 @@ env:
   NSS_REF: edma-nss
   VARIANT: edma-nss
   RELEASE_PREFIX: edma-nss
-  MESH_RELEASE_PREFIX: edma-nss-mesh
   KEEP: "2"                     # newest releases to retain, per prefix
   FEEDS: "src-git nss https://github.com/JuliusBairaktaris/nss-packages.git;edma-nss"
+  # luci-app-athena-led is not in any OpenWrt feed; taken from here instead.
+  ATHENA_REPO: VIKINGYFY/immortalwrt
+  ATHENA_REF: main
 
 jobs:
   check:
@@ -53,22 +45,6 @@ jobs:
       - id: check
         run: bash scripts/check-updates.sh
 
-  stats:
-    name: Download stats
-    needs: check
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-    steps:
-      - uses: actions/checkout@v7
-      # Refreshes the README badge every run; the prune job also folds in
-      # deleted releases before removing them.
-      - run: bash scripts/download-stats.sh
-
   release:
     name: Create draft release
     needs: check
@@ -83,68 +59,46 @@ jobs:
       NSS_SHA: ${{ needs.check.outputs.nss_sha }}
     outputs:
       tag: ${{ steps.draft.outputs.tag }}
-      mesh_tag: ${{ steps.draft.outputs.mesh_tag }}
     steps:
       - id: draft
         run: |
           set -euo pipefail
           date=$(date -u +%F)
           stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          tag="${RELEASE_PREFIX}-${stamp}-${GITHUB_RUN_ID}"
 
-          # One draft per flavour. The build jobs upload into them; each is
-          # published only once every group of both flavours has succeeded, so
-          # a partial image set never goes out.
-          draft() {
-            local prefix="$1" name="$2" tag
-            tag="${prefix}-${stamp}-${GITHUB_RUN_ID}"
-
-            {
-              echo "## OpenWrt Build — ${name}"
-              echo "- **Date**: $date"
-              echo "- **Variant**: \`${name}\`"
-              echo "- **Targets**: \`qualcommax/ipq807x\`, \`qualcommax/ipq60xx\`"
-              echo "- **Upstream**: \`${UPSTREAM_REPO}@${UPSTREAM_SHA}\`"
-              if [[ -n "${NSS_SHA}" ]]; then
-                echo "- **NSS**: \`${NSS_SHA}\`"
-              fi
-              echo "- **Trigger**: \`${GITHUB_EVENT_NAME}\`"
-              echo
-              if [[ "$prefix" == "$MESH_RELEASE_PREFIX" ]]; then
-                echo "**802.11s mesh offload build.** Same stack as the \`${VARIANT}\`"
-                echo "release of the same date, on NSS firmware 11.4.0.5 — the last"
-                echo "firmware line that accepts a mesh interface — with the ath11k mesh"
-                echo "path/proxy-path offload compiled in. Take this one only if you run"
-                echo "802.11s; the \`${VARIANT}\` release carries the newer 12.5 firmware."
-                echo
-              fi
-              echo "Pick the \`...-<your device>-squashfs-sysupgrade.bin\` asset and flash"
-              echo "it over an existing OpenWrt install. These are sysupgrade images only -"
-              echo "there is no factory image; install stock OpenWrt first if you are not"
-              echo "already running it."
-              echo
-              echo "The offload comes up at boot; \`nss-status\` reports its health."
-              echo "To stay on the plain host stack instead:"
-              echo "\`uci set nss.general.enabled='0'; uci commit nss; reboot\`."
-            } >release_notes.md
-
-            # stdout is the tag; gh prints the release URL, which would
-            # otherwise end up in it.
-            gh release create "$tag" \
-              --repo "$GITHUB_REPOSITORY" \
-              --draft \
-              --title "OpenWrt ${name} $date" \
-              --notes-file release_notes.md >&2
-
-            printf '%s\n' "$tag"
-          }
-
+          # The build job uploads into the draft; it is published only once
+          # the build has succeeded, so a partial image set never goes out.
           {
-            echo "tag=$(draft "$RELEASE_PREFIX" "$VARIANT")"
-            echo "mesh_tag=$(draft "$MESH_RELEASE_PREFIX" "$MESH_RELEASE_PREFIX")"
-          } >>"$GITHUB_OUTPUT"
+            echo "## OpenWrt Build — ${VARIANT}, JDCloud RE-CS-02 (AX6600)"
+            echo "- **Date**: $date"
+            echo "- **Variant**: \`${VARIANT}\`"
+            echo "- **Target**: \`qualcommax/ipq60xx\`, \`jdcloud_re-cs-02\`"
+            echo "- **Upstream**: \`${UPSTREAM_REPO}@${UPSTREAM_SHA}\`"
+            if [[ -n "${NSS_SHA}" ]]; then
+              echo "- **NSS**: \`${NSS_SHA}\`"
+            fi
+            echo "- **Trigger**: \`${GITHUB_EVENT_NAME}\`"
+            echo
+            echo "Flash the \`...-jdcloud_re-cs-02-squashfs-sysupgrade.bin\` asset over an"
+            echo "existing OpenWrt/ImmortalWrt install, without keeping settings when coming"
+            echo "from ImmortalWrt. This is a sysupgrade image only - there is no factory image."
+            echo
+            echo "The offload comes up at boot; \`nss-status\` reports its health."
+            echo "To stay on the plain host stack instead:"
+            echo "\`uci set nss.general.enabled='0'; uci commit nss; reboot\`."
+          } >release_notes.md
+
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "OpenWrt ${VARIANT} RE-CS-02 $date" \
+            --notes-file release_notes.md
+
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
 
   build:
-    name: Build ${{ matrix.device }} (${{ matrix.flavour }})
+    name: Build ${{ matrix.device }}
     needs: [check, release]
     runs-on: ubuntu-26.04
     timeout-minutes: 360
@@ -153,22 +107,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One entry per devices/<name>/ directory. The memory-profile groups exist
-        # because the ath11k memory profile is compile-time and image-wide, so
-        # boards can only share a build when they share a profile.
-        device: [xiaomi_ax3600, ipq807x-1g, ipq807x-512m, ipq807x-256m, ipq60xx-1g, ipq60xx-512m]
-        # The flavour is a .config fragment on top of the same overlays and the
-        # same source trees; mesh needs the 11.4 firmware, which is image-wide
-        # too, so it cannot share a build with the default flavour either.
-        flavour: [default, mesh]
-        include:
-          - flavour: mesh
-            config_fragment: devices/common/config.mesh
+        # One entry per devices/<name>/ directory.
+        device: [jdcloud_re-cs-02]
     env:
       GH_TOKEN: ${{ github.token }}
       DEVICE: ${{ matrix.device }}
-      CONFIG_FRAGMENT: ${{ matrix.config_fragment }}
-      TAG: ${{ matrix.flavour == 'mesh' && needs.release.outputs.mesh_tag || needs.release.outputs.tag }}
+      TAG: ${{ needs.release.outputs.tag }}
     steps:
       - name: Install build dependencies
         run: |
@@ -191,6 +135,22 @@ jobs:
           ref: ${{ needs.check.outputs.upstream_sha }}
           fetch-depth: 0
           path: openwrt
+
+      # Into package/ before prepare-build.sh, so the feeds install sees it.
+      # Its Makefile includes feeds/luci/luci.mk: the luci feed has to be
+      # there first, or the first package scan caches it as an empty package
+      # and defconfig drops it.
+      - name: Add luci-app-athena-led
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          ./scripts/feeds update luci
+          cd ..
+          git clone --depth=1 --filter=blob:none --sparse --branch "$ATHENA_REF" \
+            "https://github.com/${ATHENA_REPO}.git" athena_src
+          git -C athena_src sparse-checkout set package/emortal/luci-app-athena-led
+          cp -a athena_src/package/emortal/luci-app-athena-led openwrt/package/
+          rm -rf athena_src
 
       - name: Checkout builder repo
         uses: actions/checkout@v7
@@ -306,24 +266,18 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ needs.release.outputs.tag }}
-      MESH_TAG: ${{ needs.release.outputs.mesh_tag }}
       BUILD_RESULT: ${{ needs.build.result }}
     steps:
       - name: Publish or discard
         run: |
           set -euo pipefail
           if [[ "$BUILD_RESULT" != "success" ]]; then
-            # A half-built release would silently be missing devices, and a
-            # draft left behind is never pruned. Drop both and fail. No
+            # A draft left behind is never pruned. Drop it and fail. No
             # --cleanup-tag: a draft's tag exists only inside the release.
             gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
-            gh release delete "$MESH_TAG" --repo "$GITHUB_REPOSITORY" --yes
-            echo "::error::a build group failed ($BUILD_RESULT); draft releases discarded"
+            echo "::error::the build failed ($BUILD_RESULT); draft release discarded"
             exit 1
           fi
-          # --latest stays on the default flavour: mesh costs the 12.5 firmware
-          # line, so it is the deliberate pick, never the one a link lands on.
-          gh release edit "$MESH_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
   prune:
@@ -341,7 +295,5 @@ jobs:
       - name: Prune
         run: |
           set -euo pipefail
-          # Per prefix: the two flavours are separate series, and a shared keep
-          # window would drop one flavour's newest image to hold the other's.
-          PREFIX="$RELEASE_PREFIX" bash scripts/prune-releases.sh
-          PREFIX="$MESH_RELEASE_PREFIX" bash scripts/prune-releases.sh
+          # No `stats` branch here, so no download count to fold into.
+          PREFIX="$RELEASE_PREFIX" STATS=0 bash scripts/prune-releases.sh

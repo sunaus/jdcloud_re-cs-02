@@ -10,6 +10,8 @@
 #                Anchored on the timestamp so `edma-nss` does not also match `edma-nss-mesh`.
 #   CURRENT_TAG  tag just published; never deleted even if it falls outside the keep window
 #   DRY_RUN      "1" prints what would be deleted and exits 0
+#   STATS        "0" skips folding the deleted releases into the download count
+#                (for repos without the `stats` branch)
 #   GH_TOKEN     forwarded to gh CLI (set by GitHub Actions automatically)
 #
 # Read input from stdin instead of calling gh:
@@ -27,6 +29,7 @@ source "$(dirname -- "$0")/lib/log.sh"
 PREFIX="${PREFIX:-}"
 CURRENT_TAG="${CURRENT_TAG:-}"
 DRY_RUN="${DRY_RUN:-0}"
+STATS="${STATS:-1}"
 RELEASES_JSON_STDIN="${RELEASES_JSON_STDIN:-0}"
 
 if ! [[ "$KEEP" =~ ^[0-9]+$ ]] || [[ "$KEEP" -lt 1 ]]; then
@@ -75,7 +78,9 @@ fi
 
 # Deleting a release drops its download counts; fold them into the lifetime
 # total first, and never delete unaccounted.
-bash "$(dirname -- "$0")/download-stats.sh" "${to_delete[@]}"
+if [[ "$STATS" != "0" ]]; then
+  bash "$(dirname -- "$0")/download-stats.sh" "${to_delete[@]}"
+fi
 
 failed=0
 for tag in "${to_delete[@]}"; do
