@@ -1,40 +1,28 @@
-# AX6600 (jdcloud_re-cs-02) OpenWRT-CI
+# AX6600 (jdcloud_re-cs-02) firmware builds
 
-Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification (aligned with commit `5d31706`), dedicated to JDCloud Athena AX6600 (`jdcloud_re-cs-02`).
+Firmware CI for the JDCloud Athena AX6600 (`jdcloud_re-cs-02`, IPQ6010) with Qualcomm NSS offload. `main` only holds this README and the shared workflows; each build lives on its own branch.
 
-## Features
+## Branches
 
-- **SONiC Fullcone NAT**: Kernel-level Full Cone NAT (NAT1) via `fullconenat-sonic` and `luci-app-fullconenat-sonic`
-- **STUN Client**: `stuntman-client` included for testing NAT mapping and filtering types
-- **LED Control**: JDCloud Athena front RGB LED control via `luci-app-athena-led`
+| Branch | Source | Based on |
+|--------|--------|----------|
+| [`VIKINGYFY`](../../tree/VIKINGYFY) | ImmortalWrt [VIKINGYFY/immortalwrt](https://github.com/VIKINGYFY/immortalwrt) `main` (NSS-DP + NSS) | Simplified from [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) |
+| [`JuliusBairaktaris`](../../tree/JuliusBairaktaris) | OpenWrt [JuliusBairaktaris/openwrt-nss-edma](https://github.com/JuliusBairaktaris/openwrt-nss-edma) `nss-edma-rework` (NSS on upstream EDMA/PPE) | Fork of [JuliusBairaktaris/Qualcommax_NSS_Builder](https://github.com/JuliusBairaktaris/Qualcommax_NSS_Builder), re-cs-02 only |
 
-## source code
+## Build
 
-- **Default**: ImmortalWrt (VIKINGYFY) - https://github.com/VIKINGYFY/immortalwrt.git (`main`, NSS-DP)
-- ImmortalWrt: https://github.com/immortalwrt/immortalwrt.git
-- OpenWrt: snapshot testing **Green light without LAN/Wi-Fi**; `WRT-TEST` for testing only, maybe not working
+Actions → pick the workflow → **Run workflow** → set **Use workflow from** to the branch:
 
-## Packages
+| Workflow | Branch | Output |
+|----------|--------|--------|
+| `QCA-ALL` | `VIKINGYFY` | factory.bin + sysupgrade.bin |
+| `WRT-TEST` | `VIKINGYFY` | test / config-only builds |
+| `Build` | `JuliusBairaktaris` | sysupgrade.bin only, release tag `edma-nss-*` |
 
-- Device: `Config/IPQ60XX-WIFI-YES.txt` → Only `jdcloud_re-cs-02`
-- Packages: `Config/GENERAL.txt` (simplified, syncthing/podman/samba/acme/ddns/smartdns/sqm/wg/netifyd can be installed later)
-- Driver: `ath11k-firmware-*-ddwrt`, `ipq-wifi-jdcloud_re-cs-02`, `luci-app-athena-led`
+The workflow files on `main` are stubs. GitHub only offers **Run workflow** for a file that also exists on the default branch, and running a stub on `main` just fails with a pointer to the right branch.
 
-## Flash
+## Maintenance
 
-| Files | Usage |
-|-------|-------|
-| `*-squashfs-factory.bin` | For U-Boot Web (`http://192.168.1.1/`) |
-| `*-squashfs-sysupgrade.bin` | Flash from luci or cli |
-
-By default: `192.168.1.1`, connect to **1G LAN** (Not 2.5G WAN). Wi‑Fi: `AX6600` / `12345678`
-
-## Compile
-
-- Actions → `QCA-ALL` (Full) or `WRT-TEST`
-- Clean: `Auto-Clean` / `Cache-Clean`
-
-## U-Boot
-
-- https://github.com/chenxin527/uboot-ipq60xx-emmc-build.git
-
+- `Cache-Clean` (weekly and manual) deletes every Actions cache.
+- `Auto-Clean` (manual) deletes **every** release, tag and workflow run, for both branches.
+- Sync the `JuliusBairaktaris` branch from upstream with `git merge` from `JuliusBairaktaris/Qualcommax_NSS_Builder` `main`; it shares that history.

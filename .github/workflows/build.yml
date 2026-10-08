@@ -1,0 +1,16 @@
+# Dispatch stub. GitHub only offers "Run workflow" for a workflow file that
+# also exists on the default branch; the real one lives on the JuliusBairaktaris branch.
+# Pick "Use workflow from: JuliusBairaktaris" - running it on main only fails.
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wrong branch
+        run: |
+          echo "::error::Build runs from the JuliusBairaktaris branch. Re-run with 'Use workflow from: JuliusBairaktaris'."
+          exit 1
