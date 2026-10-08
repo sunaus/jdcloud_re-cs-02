@@ -31,7 +31,7 @@ By default: `192.168.1.1`, connect to **1G LAN** (Not 2.5G WAN). Wi‑Fi: `AX660
 
 ## Compile
 
-- Actions → `QCA-ALL` (Full) or `WRT-TEST`
+- Actions → `QCA-ALL` (Full) or `WRT-TEST`, with **Use workflow from: `VIKINGYFY`** (the files on `main` are dispatch stubs)
 - Clean: `Auto-Clean` / `Cache-Clean`
 
 ## U-Boot
