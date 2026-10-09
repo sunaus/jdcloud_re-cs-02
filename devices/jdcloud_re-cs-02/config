@@ -47,6 +47,7 @@ CONFIG_PACKAGE_sqlite3-cli=y
 ## fullconenat-sonic + luci-app-fullconenat-sonic (ImmortalWrt, needs its
 ## kernel patches), stuntman-client (muink/openwrt-stuntman) and the
 ## ath11k-firmware-*-ddwrt blobs (ImmortalWrt; the stock firmware is used).
+## zoneinfo-australia is called zoneinfo-australia-nz in OpenWrt.
 ## attendedsysupgrade/owut wins over devices/common/config's =n: do not use
 ## them to upgrade, the sysupgrade server only builds stock OpenWrt (no NSS).
 CONFIG_PACKAGE_luci-base=y
@@ -65,7 +66,7 @@ CONFIG_PACKAGE_owut=y
 CONFIG_PACKAGE_socat=y
 CONFIG_PACKAGE_usteer=y
 CONFIG_PACKAGE_wget-ssl=y
-CONFIG_PACKAGE_zoneinfo-australia=y
+CONFIG_PACKAGE_zoneinfo-australia-nz=y
 CONFIG_PACKAGE_zoneinfo-core=y
 CONFIG_PACKAGE_iptables-nft=y
 CONFIG_PACKAGE_iptables-mod-ipopt=y
