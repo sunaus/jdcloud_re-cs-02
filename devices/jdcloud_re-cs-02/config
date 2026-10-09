@@ -11,6 +11,13 @@ CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-cs-02=y
 CONFIG_ATH11K_MEM_PROFILE_1G=y
 CONFIG_NSS_MEM_PROFILE_MEDIUM=y
 
+## eMMC overlay: on first boot fstools formats the rootfs_data loop device
+## behind the squashfs as F2FS. OpenWrt's Device/jdcloud_re-cs-02 does not
+## pull these in (link_nn6000 does), and without mkfs.f2fs the overlay falls
+## back to tmpfs and nothing survives a reboot.
+CONFIG_PACKAGE_kmod-fs-f2fs=y
+CONFIG_PACKAGE_f2fs-tools=y
+
 ## Front LED screen. Not in the OpenWrt feeds: build.yml copies it into
 ## package/ from VIKINGYFY/immortalwrt before the feeds are installed.
 CONFIG_PACKAGE_luci-app-athena-led=y
