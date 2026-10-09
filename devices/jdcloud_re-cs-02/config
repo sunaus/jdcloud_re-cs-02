@@ -18,6 +18,62 @@ CONFIG_NSS_MEM_PROFILE_MEDIUM=y
 CONFIG_PACKAGE_kmod-fs-f2fs=y
 CONFIG_PACKAGE_f2fs-tools=y
 
+## Disk/FS tools (eMMC + USB), as in the VIKINGYFY branch's Config/GENERAL.txt.
+CONFIG_PACKAGE_blkid=y
+CONFIG_PACKAGE_block-mount=y
+CONFIG_PACKAGE_blockd=y
+CONFIG_PACKAGE_cfdisk=y
+CONFIG_PACKAGE_e2fsprogs=y
+CONFIG_PACKAGE_f2fsck=y
+CONFIG_PACKAGE_fdisk=y
+CONFIG_PACKAGE_mkf2fs=y
+CONFIG_PACKAGE_mmc-utils=y
+CONFIG_PACKAGE_mount-utils=y
+CONFIG_PACKAGE_resize2fs=y
+CONFIG_PACKAGE_swap-utils=y
+CONFIG_PACKAGE_coreutils=y
+CONFIG_PACKAGE_coreutils-base64=y
+CONFIG_PACKAGE_coreutils-nohup=y
+CONFIG_PACKAGE_coreutils-sort=y
+CONFIG_PACKAGE_shadow-utils=y
+CONFIG_PACKAGE_shadow-useradd=y
+CONFIG_PACKAGE_shadow-chsh=y
+CONFIG_PACKAGE_unzip=y
+CONFIG_PACKAGE_psmisc=y
+CONFIG_PACKAGE_sqlite3-cli=y
+
+## LuCI, tools and firewall userspace, as in the VIKINGYFY branch's
+## Config/GENERAL.txt. Not carried over, as they are not in OpenWrt:
+## fullconenat-sonic + luci-app-fullconenat-sonic (ImmortalWrt, needs its
+## kernel patches), stuntman-client (muink/openwrt-stuntman) and the
+## ath11k-firmware-*-ddwrt blobs (ImmortalWrt; the stock firmware is used).
+## attendedsysupgrade/owut wins over devices/common/config's =n: do not use
+## them to upgrade, the sysupgrade server only builds stock OpenWrt (no NSS).
+CONFIG_PACKAGE_luci-base=y
+CONFIG_PACKAGE_luci-light=y
+CONFIG_PACKAGE_luci-compat=y
+CONFIG_PACKAGE_luci-lib-base=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+CONFIG_PACKAGE_luci-app-package-manager=y
+CONFIG_PACKAGE_luci-app-usteer=y
+CONFIG_PACKAGE_luci-app-attendedsysupgrade=y
+CONFIG_PACKAGE_attendedsysupgrade-common=y
+CONFIG_PACKAGE_fping=y
+CONFIG_PACKAGE_jq=y
+CONFIG_PACKAGE_openssl-util=y
+CONFIG_PACKAGE_owut=y
+CONFIG_PACKAGE_socat=y
+CONFIG_PACKAGE_usteer=y
+CONFIG_PACKAGE_wget-ssl=y
+CONFIG_PACKAGE_zoneinfo-australia=y
+CONFIG_PACKAGE_zoneinfo-core=y
+CONFIG_PACKAGE_iptables-nft=y
+CONFIG_PACKAGE_iptables-mod-ipopt=y
+CONFIG_PACKAGE_xtables-nft=y
+CONFIG_PACKAGE_ip-tiny=y
+CONFIG_PACKAGE_ss=y
+CONFIG_PACKAGE_ipq-wifi-jdcloud_re-cs-02=y
+
 ## Front LED screen. Not in the OpenWrt feeds: build.yml copies it into
 ## package/ from VIKINGYFY/immortalwrt before the feeds are installed.
 CONFIG_PACKAGE_luci-app-athena-led=y

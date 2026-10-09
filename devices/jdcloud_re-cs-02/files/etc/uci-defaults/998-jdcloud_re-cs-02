@@ -1,8 +1,11 @@
 # Default root password 'root': OpenSSH refuses the stock empty password.
 # Only while it is still empty, so a password set later survives a
-# settings-preserving sysupgrade.
+# settings-preserving sysupgrade. Written as a hash rather than through
+# passwd, which shadow-utils replaces with one that needs a tty.
+# Hash: openssl passwd -6 -salt jdcloudre root
+# shellcheck disable=SC2016 # the hash's $ are literal
 if [ -z "$(awk -F: '$1 == "root" { print $2 }' /etc/shadow)" ]; then
-	printf 'root\nroot\n' | passwd root >/dev/null 2>&1
+	sed -i 's|^root::|root:$6$jdcloudre$qgzu/muNugj4uMsPwg0Zs427g1vw3nzulAOefUwXkR/DR.qUTcGVpT0DFmh88K387Qy97ZM8TvdredZNjlpNV1:|' /etc/shadow
 fi
 
 # Same hostname and timezone as the VIKINGYFY branch images. Applied once,
