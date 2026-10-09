@@ -1,3 +1,10 @@
+# Default root password 'root': OpenSSH refuses the stock empty password.
+# Only while it is still empty, so a password set later survives a
+# settings-preserving sysupgrade.
+if [ -z "$(awk -F: '$1 == "root" { print $2 }' /etc/shadow)" ]; then
+	printf 'root\nroot\n' | passwd root >/dev/null 2>&1
+fi
+
 # Same hostname and timezone as the VIKINGYFY branch images. Applied once,
 # like 999-QOL_config, so a sysupgrade keeping settings does not reset them.
 [ "$(uci -q get system.@system[0].jdcloud_defaults)" = 1 ] && exit 0
