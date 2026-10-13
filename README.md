@@ -7,7 +7,7 @@ Firmware CI for the JDCloud Athena AX6600 (`jdcloud_re-cs-02`, IPQ6010) with Qua
 | Branch | Source | Based on |
 |--------|--------|----------|
 | [`VIKINGYFY`](../../tree/VIKINGYFY) | ImmortalWrt [VIKINGYFY/immortalwrt](https://github.com/VIKINGYFY/immortalwrt) `main` (NSS-DP + NSS) | Simplified from [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) |
-| [`JuliusBairaktaris`](../../tree/JuliusBairaktaris) | OpenWrt [JuliusBairaktaris/openwrt-nss-edma](https://github.com/JuliusBairaktaris/openwrt-nss-edma) `nss-edma-rework` (NSS on upstream EDMA/PPE) | Fork of [JuliusBairaktaris/Qualcommax_NSS_Builder](https://github.com/JuliusBairaktaris/Qualcommax_NSS_Builder), re-cs-02 only |
+| [`JuliusBairaktaris`](../../tree/JuliusBairaktaris) | OpenWrt [JuliusBairaktaris/openwrt-ppe-nss](https://github.com/JuliusBairaktaris/openwrt-ppe-nss) `ppe-nss` (PPE wired offload + NSS Wi-Fi offload; only the NSS firmware from [nss-packages](https://github.com/JuliusBairaktaris/nss-packages)) | Fork of [JuliusBairaktaris/Qualcommax_NSS_Builder](https://github.com/JuliusBairaktaris/Qualcommax_NSS_Builder), re-cs-02 only |
 
 ## Build
 
@@ -17,7 +17,7 @@ Actions → pick the workflow → **Run workflow** → set **Use workflow from**
 |----------|--------|--------|
 | `QCA-ALL` | `VIKINGYFY` | factory.bin + sysupgrade.bin |
 | `WRT-TEST` | `VIKINGYFY` | test / config-only builds |
-| `Build` | `JuliusBairaktaris` | sysupgrade.bin only, release tag `edma-nss-*` |
+| `Build` | `JuliusBairaktaris` | sysupgrade.bin only, release tag `ppe-nss-*` |
 
 The workflow files on `main` are stubs. GitHub only offers **Run workflow** for a file that also exists on the default branch, and running a stub on `main` just fails with a pointer to the right branch.
 
