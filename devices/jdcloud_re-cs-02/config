@@ -17,6 +17,7 @@ CONFIG_PACKAGE_openssh-moduli=n
 CONFIG_PACKAGE_openssh-server=n
 CONFIG_PACKAGE_sqm-scripts=n
 CONFIG_PACKAGE_luci-app-sqm=n
+CONFIG_PACKAGE_luci-app-bcp38=n
 
 ## eMMC overlay: on first boot fstools formats the rootfs_data loop device
 ## behind the squashfs as F2FS. OpenWrt's Device/jdcloud_re-cs-02 does not
