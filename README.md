@@ -1,6 +1,6 @@
 # AX6600 (jdcloud_re-cs-02) OpenWRT-CI
 
-Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification (aligned with commit `5d31706`), dedicated to JDCloud Athena AX6600 (`jdcloud_re-cs-02`).
+Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplification (aligned with commit `334e5fc`), dedicated to JDCloud Athena AX6600 (`jdcloud_re-cs-02`).
 
 ## Features
 
