@@ -2,14 +2,21 @@
 # JDCloud RE-CS-02 / Athena AX6600 (IPQ6010, 1 GB) - single-device build.
 #
 # Concatenated onto devices/common/config by prepare-build.sh (this file wins
-# on any symbol set in both). Same memory profiles as devices/ipq60xx-1g.
+# on any symbol set in both). No memory profiles, as devices/ipq60xx-1g.
 #
 
 CONFIG_TARGET_qualcommax_ipq60xx=y
 CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_jdcloud_re-cs-02=y
 
-CONFIG_ATH11K_MEM_PROFILE_1G=y
-CONFIG_NSS_MEM_PROFILE_MEDIUM=y
+## Local choices kept here rather than in devices/common/config, so upstream
+## merges do not conflict: dropbear instead of OpenSSH, and SQM left out
+## (install sqm-scripts + luci-app-sqm later if wanted; hw_ppe.qos is only
+## in the patched sqm-scripts this build carries).
+CONFIG_PACKAGE_dropbear=y
+CONFIG_PACKAGE_openssh-moduli=n
+CONFIG_PACKAGE_openssh-server=n
+CONFIG_PACKAGE_sqm-scripts=n
+CONFIG_PACKAGE_luci-app-sqm=n
 
 ## eMMC overlay: on first boot fstools formats the rootfs_data loop device
 ## behind the squashfs as F2FS. OpenWrt's Device/jdcloud_re-cs-02 does not
@@ -75,8 +82,8 @@ CONFIG_PACKAGE_ip-tiny=y
 CONFIG_PACKAGE_ss=y
 CONFIG_PACKAGE_ipq-wifi-jdcloud_re-cs-02=y
 
-## Front LED screen. Not in the OpenWrt feeds: build.yml copies it into
-## package/ from VIKINGYFY/immortalwrt before the feeds are installed.
+## Front LED screen. Not in the OpenWrt feeds: build.yml adds it as a local
+## feed, taken from VIKINGYFY/immortalwrt.
 CONFIG_PACKAGE_luci-app-athena-led=y
 
 ## Kernel modules carried over from the VIKINGYFY branch (Config/GENERAL.txt).
@@ -85,8 +92,8 @@ CONFIG_PACKAGE_luci-app-athena-led=y
 ## Left out, as prepare-build.sh fails on any symbol defconfig drops:
 ## kmod-nf-conntrack6 is gone from OpenWrt main (folded into kmod-nf-conntrack),
 ## kmod-lib-crc32c is 6.12-only (crc32c is in the 6.18 kernel lib).
-## kmod-nft-offload is only the module - leave firewall4 flow offloading off,
-## ECM does the offload here.
+## kmod-nft-offload carries the wired offload: fw4 hardware flow offloading
+## (998-flow-offload turns it on at first boot) is what drives the PPE.
 CONFIG_PACKAGE_kmod-asn1-decoder=y
 CONFIG_PACKAGE_kmod-cfg80211=y
 CONFIG_PACKAGE_kmod-crypto-aead=y

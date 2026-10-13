@@ -26,11 +26,10 @@ permissions:
   contents: read
 
 env:
-  UPSTREAM_REPO: JuliusBairaktaris/openwrt-nss-edma
+  UPSTREAM_REPO: JuliusBairaktaris/openwrt-ppe-nss
   UPSTREAM_REF: ppe-flow-offload
   TAG: ppe-offload-test
-  # No overlay files for this flavour; VARIANT picks files.<variant> and
-  # patches/feeds/<variant>.
+  # VARIANT picks files.<variant> and patches/feeds/<variant>.
   VARIANT: ppe
   COMMON: common-ppe
   # The luci feed comes from the fork carrying luci-app-ppe-qos (openwrt/luci
@@ -148,31 +147,50 @@ jobs:
             echo "KBUILD_BUILD_HOST=github"
           } >>"$GITHUB_ENV"
 
+      # The OpenWrt source mirrors can stall, and a git source
+      # cannot fall back to a fresh clone: its PKG_MIRROR_HASH covers the zstd
+      # stream, which changes with the zstd version. Verified downloads are kept
+      # between runs; download.pl deletes any that no longer match their hash.
+      # Old source versions accumulate; deleting the dl- entries starts over.
+      - name: Restore sources
+        uses: actions/cache/restore@v6
+        with:
+          path: openwrt/dl
+          key: dl-${{ github.run_id }}
+          restore-keys: dl-
+
       - name: Download sources
+        id: download
         working-directory: openwrt
         run: |
           set -euo pipefail
+          mkdir -p dl
+          before=$(find dl -maxdepth 1 -type f | wc -l)
           for attempt in 1 2 3; do
             make download -j"$(nproc)" V=s && break
             echo "Download attempt $attempt failed; retrying..."
             sleep 5
           done
+          echo "grew=$(($(find dl -maxdepth 1 -type f | wc -l) > before))" >>"$GITHUB_OUTPUT"
+
+      # One entry per run that fetched something new: the first job to get here
+      # saves, the others find the key taken. Each job restores the newest
+      # entry, so it grows to the union of every group's sources.
+      - name: Save sources
+        if: steps.download.outputs.grew == 1
+        uses: actions/cache/save@v6
+        with:
+          path: openwrt/dl
+          key: dl-${{ github.run_id }}
 
       # ccache hashes neither the assembler nor cc1, so the key covers every
       # toolchain input and a change there starts from an empty cache. GitHub
       # drops entries unused for 7 days and evicts the oldest over the quota.
-      # The GCC version string carries the OpenWrt revision, which lands in
-      # the compiler binary and the kernel's autoconf.h and so misses every
-      # target object on each new commit; the toolchain tree hash replaces it.
       - name: Compute ccache key
         id: ccache
         run: |
           set -euo pipefail
           tree=$(git -C openwrt rev-parse HEAD:toolchain)
-          mk=openwrt/toolchain/gcc/common.mk
-          # shellcheck disable=SC2016 # make variables, not shell
-          grep -qx 'PKGVERSION=OpenWrt GCC $(PKG_VERSION) $(REVISION)' "$mk"
-          sed -i "s/^PKGVERSION=.*/PKGVERSION=OpenWrt GCC \$(PKG_VERSION) ${tree:0:12}/" "$mk"
           sum=$({
             echo "$tree"
             grep -E '^CONFIG_(BINUTILS|GCC|LIBC|MUSL|GLIBC)_' openwrt/.config

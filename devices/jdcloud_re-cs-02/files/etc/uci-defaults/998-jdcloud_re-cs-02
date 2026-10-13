@@ -1,4 +1,4 @@
-# Default root password 'root': OpenSSH refuses the stock empty password.
+# Default root password 'root' instead of OpenWrt's empty one.
 # Only while it is still empty, so a password set later survives a
 # settings-preserving sysupgrade. Written as a hash rather than through
 # passwd, which shadow-utils replaces with one that needs a tty.
