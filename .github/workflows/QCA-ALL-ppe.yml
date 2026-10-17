@@ -1,0 +1,16 @@
+# Dispatch stub. GitHub only offers "Run workflow" for a workflow file that
+# also exists on the default branch; the real one lives on the VIKINGYFY-ppe branch.
+# Pick "Use workflow from: VIKINGYFY-ppe" - running it on main only fails.
+name: QCA-ALL-ppe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wrong branch
+        run: |
+          echo "::error::QCA-ALL-ppe runs from the VIKINGYFY-ppe branch. Re-run with 'Use workflow from: VIKINGYFY-ppe'."
+          exit 1
