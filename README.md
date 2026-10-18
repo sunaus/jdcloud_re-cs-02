@@ -10,7 +10,7 @@ Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplif
 
 ## source code
 
-- **Default**: ImmortalWrt (VIKINGYFY) - https://github.com/VIKINGYFY/immortalwrt.git (`main`, NSS-DP)
+- **Default**: ImmortalWrt (VIKINGYFY) - https://github.com/VIKINGYFY/immortalwrt.git (`ppe`, PPE)
 - ImmortalWrt: https://github.com/immortalwrt/immortalwrt.git
 - OpenWrt: snapshot testing **Green light without LAN/Wi-Fi**; `WRT-TEST` for testing only, maybe not working
 
@@ -18,7 +18,6 @@ Based on [VIKINGYFY/OpenWRT-CI](https://github.com/VIKINGYFY/OpenWRT-CI) simplif
 
 - Device: `Config/IPQ60XX-WIFI-YES.txt` → Only `jdcloud_re-cs-02`
 - Packages: `Config/GENERAL.txt` (simplified, syncthing/podman/samba/acme/ddns/smartdns/sqm/wg/netifyd can be installed later)
-- Driver: `ath11k-firmware-*-ddwrt`, `ipq-wifi-jdcloud_re-cs-02`, `luci-app-athena-led`
 
 ## Flash
 
@@ -31,7 +30,7 @@ By default: `192.168.1.1`, connect to **1G LAN** (Not 2.5G WAN). Wi‑Fi: `AX660
 
 ## Compile
 
-- Actions → `QCA-ALL` (Full) or `WRT-TEST`, with **Use workflow from: `VIKINGYFY`** (the files on `main` are dispatch stubs)
+- Actions → `QCA-ALL-ppe` (Full), with **Use workflow from: `VIKINGYFY`** (the files on `ppe` are dispatch stubs)
 - Clean: `Auto-Clean` / `Cache-Clean`
 
 ## U-Boot
