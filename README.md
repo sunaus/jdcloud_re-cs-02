@@ -17,7 +17,7 @@ Actions → pick the workflow → **Run workflow** → set **Use workflow from**
 | Workflow | Branch | Output |
 |----------|--------|--------|
 | `QCA-ALL` | `VIKINGYFY` | factory.bin + sysupgrade.bin |
-| `QCA-ALL-ppe` | `VIKINGYFY` | factory.bin + sysupgrade.bin |
+| `QCA-ALL-ppe` | `VIKINGYFY-ppe` | factory.bin + sysupgrade.bin |
 | `WRT-TEST` | `VIKINGYFY` | test / config-only builds |
 | `Build` | `JuliusBairaktaris` | sysupgrade.bin only, release tag `ppe-nss-*` |
 
