@@ -54,9 +54,6 @@ CONFIG_PACKAGE_usteer=y
 CONFIG_PACKAGE_wget-ssl=y
 CONFIG_PACKAGE_zoneinfo-australia=y
 CONFIG_PACKAGE_zoneinfo-core=y
-# For podman
-CONFIG_PACKAGE_netavark=y
-CONFIG_PACKAGE_aardvark-dns=y
 # Disk/FS (eMMC + USB)
 CONFIG_PACKAGE_blkid=y
 CONFIG_PACKAGE_block-mount=y
