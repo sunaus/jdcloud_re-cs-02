@@ -10,6 +10,7 @@ CONFIG_PACKAGE_luci-app-firewall=y
 CONFIG_PACKAGE_luci-app-package-manager=y
 CONFIG_PACKAGE_luci-app-usteer=y
 CONFIG_PACKAGE_luci-app-attendedsysupgrade=y
+CONFIG_PACKAGE_luci-app-router-role=n
 # No Proxy
 CONFIG_PACKAGE_luci-app-homeproxy=n
 CONFIG_PACKAGE_luci-app-gecoosac=n
@@ -54,9 +55,6 @@ CONFIG_PACKAGE_usteer=y
 CONFIG_PACKAGE_wget-ssl=y
 CONFIG_PACKAGE_zoneinfo-australia=y
 CONFIG_PACKAGE_zoneinfo-core=y
-# For podman
-CONFIG_PACKAGE_netavark=y
-CONFIG_PACKAGE_aardvark-dns=y
 # Disk/FS (eMMC + USB)
 CONFIG_PACKAGE_blkid=y
 CONFIG_PACKAGE_block-mount=y
