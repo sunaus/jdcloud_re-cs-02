@@ -31,7 +31,7 @@ The workflow files on `main` are stubs. GitHub only offers **Run workflow** for 
 
 ## Test results (2026-10-18)
 
-Setup: the AX6600 `wan` port is a trunk to a VLAN switch (VLAN 2, 3, 4, 9, 100). Two ways of handling the VLANs were tried:
+Setup: the AX6600 `wan` port is a trunk to a VLAN switch (VLAN 2, 100). Two ways of handling the VLANs were tried:
 
 - **trunk**: 802.1Q sub-interfaces (`wan.N`), one bridge per VLAN (`brlan.N`), no bridge VLAN filtering.
 - **vlan filtering**: `wan` is a bridge port, bridge VLAN filtering enabled, `wan` tagged for all VLANs, LAN ports untagged (PVID).
@@ -62,9 +62,9 @@ Use `VIKINGYFY` in trunk mode (row 1). Use the PPE branches only for testing.
 
 ### Notes for the keepalived scripts
 
-- Per-VLAN bridges can be named `brlan.2`, `brlan.3`, `brlan.4`, `brlan.9`, `brlan.100` (netifd creates them as real bridges when declared with `option type 'bridge'`).
-- UCI section names cannot contain dots: keep a section name such as `br_wan` or `brlan9` and put the dotted name in `option name`; `uci get network.<section>.ports` uses the section name.
-- The FDB clean-up in `master-runtime.sh` must target the right device: `dev wan vlan 100` for vlan filtering, `dev wan.100` for trunk (no `vlan` argument, `self` does not apply to 802.1Q devices).
+- Per-VLAN bridges can be named `brlan.2`, `brlan.100` (netifd creates them as real bridges when declared with `option type 'bridge'`).
+- UCI section names cannot contain dots: keep a section name such as `br_wan` or `brlan100` and put the dotted name in `option name`; `uci get network.<section>.ports` uses the section name.
+- The FDB clean-up must target the right device: `dev wan vlan 100` for vlan filtering, `dev wan.100` for trunk (no `vlan` argument, `self` does not apply to 802.1Q devices).
 
 ### Related
 
