@@ -1,0 +1,164 @@
+name: LIBWRT
+run-name: Build jdcloud_ipq60xx_libwrt
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: 'ZqinKing/wrt_release commit, tag or branch used as build framework'
+        required: false
+        default: '90a9591817720d7876e95b8df51e895d643eba19'
+        type: string
+      source_commit:
+        description: 'Optional LiBwrt/openwrt-6.x commit to pin (empty = latest 25.12-nss)'
+        required: false
+        default: ''
+        type: string
+      config_only:
+        description: 'Stop after make defconfig (no firmware, no release)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  DEV: jdcloud_ipq60xx_libwrt
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/.ghcup || true
+          sudo rm -rf /usr/share/swift || true
+          sudo rm -rf "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" || true
+          docker system prune -af || true
+          sudo -E apt-get autoremove --purge -y || true
+          sudo -E apt-get clean || true
+          df -hT
+
+      - name: Build System Setup
+        run: |
+          sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+          sudo -E apt -yqq install dos2unix
+          sudo -E apt -yqq install libfuse-dev
+          sudo -E apt -yqq autoremove --purge
+          sudo -E apt -yqq autoclean
+          sudo -E apt -yqq clean
+          sudo -E systemctl daemon-reload
+
+      - name: Checkout overlay (this branch)
+        uses: actions/checkout@v7.0.0
+        with:
+          path: overlay
+
+      - name: Checkout build framework
+        uses: actions/checkout@v7.0.0
+        with:
+          repository: ZqinKing/wrt_release
+          ref: ${{ inputs.upstream_ref }}
+          path: wrt_release
+
+      - name: Apply overlay (keep only jdcloud_ipq60xx_libwrt)
+        working-directory: wrt_release
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          find wrt_core/compilecfg -maxdepth 1 -type f -name '*.ini' ! -name "${DEV}.ini" -delete
+          find wrt_core/deconfig -maxdepth 1 -type f -name '*.config' ! -name 'compile_base.config' -delete
+          find wrt_core/deconfig/fragments -maxdepth 1 -type f -name '*.config' -delete
+          cp -rf ../overlay/wrt_core/. wrt_core/
+          if [ -n "$SOURCE_COMMIT" ]; then
+            echo "COMMIT_HASH=$SOURCE_COMMIT" >> "wrt_core/compilecfg/${DEV}.ini"
+          fi
+          ls -R wrt_core/compilecfg wrt_core/deconfig
+          cat "wrt_core/compilecfg/${DEV}.ini"
+
+      - name: Set Build Date
+        run: echo "BUILD_DATE=$(TZ=Australia/Sydney date +%y.%m.%d_%H.%M.%S)" >> "$GITHUB_ENV"
+
+      - name: Pre Clone
+        working-directory: wrt_release
+        run: ./wrt_core/pre_clone_action.sh "$DEV"
+
+      - name: Cache Dependencies
+        uses: actions/cache@v6.1.0
+        with:
+          path: |
+            wrt_release/action_build/.ccache
+            wrt_release/action_build/staging_dir
+          key: ubuntu-24.04-${{ env.DEV }}-${{ hashFiles('wrt_release/repo_flag') }}-${{ env.BUILD_DATE }}
+          restore-keys: |
+            ubuntu-24.04-${{ env.DEV }}-${{ hashFiles('wrt_release/repo_flag') }}-
+
+      - name: Refresh the cache
+        run: |
+          if [ -d "./wrt_release/action_build/staging_dir" ]; then
+            find "./wrt_release/action_build/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
+              find "$dir" -type f -exec touch {} +
+            done
+          fi
+
+      - name: Build Firmware
+        working-directory: wrt_release
+        env:
+          CONFIG_ONLY: ${{ inputs.config_only }}
+        run: |
+          if [ "$CONFIG_ONLY" = "true" ]; then
+            ./build.sh "$DEV" debug
+          else
+            ./build.sh "$DEV"
+          fi
+
+      - name: Collect config and source commit
+        working-directory: wrt_release
+        run: |
+          mkdir -p firmware
+          cp -f action_build/.config "firmware/config-${DEV}-${BUILD_DATE}.txt"
+          echo "SRC_HASH=$(git -C action_build rev-parse HEAD)" >> "$GITHUB_ENV"
+          ls -lh firmware
+
+      - name: Verify firmware
+        if: ${{ !inputs.config_only }}
+        working-directory: wrt_release
+        run: |
+          ls firmware | grep -q 're-cs-02.*sysupgrade' || { echo 'jdcloud_re-cs-02 sysupgrade image not found'; ls -l firmware; exit 1; }
+
+      - name: Delete Old Cache
+        if: ${{ !inputs.config_only }}
+        run: |
+          gh cache list --key ubuntu-24.04-${{ env.DEV }}-${{ hashFiles('wrt_release/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
+            gh cache delete "$key"
+          done
+
+      - name: Upload config
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ${{ env.BUILD_DATE }}_${{ env.DEV }}_config
+          path: wrt_release/firmware/config-*.txt
+
+      - name: Release Firmware
+        if: ${{ !inputs.config_only }}
+        uses: softprops/action-gh-release@master
+        with:
+          tag_name: ${{ env.DEV }}-${{ env.BUILD_DATE }}
+          files: |
+            wrt_release/firmware/*re-cs-02*
+            wrt_release/firmware/config-*.txt
+          body: |
+            JDCloud Athena AX6600 (jdcloud_re-cs-02) - LiBwrt NSS
+            - factory.bin for U-Boot Web
+            - sysupgrade.bin for upgrade via luci or cli
+
+            framework: ZqinKing/wrt_release @ ${{ inputs.upstream_ref }}
+            source: LiBwrt/openwrt-6.x (25.12-nss)
+            commit: ${{ env.SRC_HASH }}
