@@ -138,6 +138,9 @@ jobs:
           # wrt_release fix_kconfig_recursive_dependency
           sed -i 's/<PACKAGE_[$]pkgname/!=y/g' scripts/package-metadata.pl
 
+          # No Chinese packages: default-settings-chn selects LUCI_LANG_zh_Hans and luci-i18n-base-zh-cn
+          sed -i '/default-settings-chn/d' include/target.mk
+
       - name: Assemble config and pin device
         working-directory: libwrt
         run: |
