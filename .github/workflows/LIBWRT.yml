@@ -1,0 +1,16 @@
+# Dispatch stub. GitHub only offers "Run workflow" for a workflow file that
+# also exists on the default branch; the real one lives on the libwrt branch.
+# Pick "Use workflow from: libwrt" - running it on main only fails.
+name: LIBWRT
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wrong branch
+        run: |
+          echo "::error::LIBWRT runs from the libwrt branch. Re-run with 'Use workflow from: libwrt'."
+          exit 1
