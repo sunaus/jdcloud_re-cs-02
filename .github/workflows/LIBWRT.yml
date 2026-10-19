@@ -1,16 +1,11 @@
 name: LIBWRT
-run-name: Build jdcloud_ipq60xx_libwrt
+run-name: Build jdcloud_ipq60xx_libwrt (LiBwrt/LibWrt)
 
 on:
   workflow_dispatch:
     inputs:
-      upstream_ref:
-        description: 'ZqinKing/wrt_release commit, tag or branch used as build framework'
-        required: false
-        default: '90a9591817720d7876e95b8df51e895d643eba19'
-        type: string
       source_commit:
-        description: 'Optional LiBwrt/openwrt-6.x commit to pin (empty = latest 25.12-nss)'
+        description: 'Optional LiBwrt/LibWrt commit to pin (empty = COMMIT_HASH in the ini, else latest branch head)'
         required: false
         default: ''
         type: string
@@ -27,7 +22,6 @@ permissions:
 env:
   DEV: jdcloud_ipq60xx_libwrt
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  GH_REPO: ${{ github.repository }}
 
 jobs:
   build:
@@ -56,95 +50,140 @@ jobs:
           sudo -E apt -yqq clean
           sudo -E systemctl daemon-reload
 
-      - name: Checkout overlay (this branch)
+      - name: Checkout (this branch)
         uses: actions/checkout@v7.0.0
-        with:
-          path: overlay
 
-      - name: Checkout build framework
-        uses: actions/checkout@v7.0.0
-        with:
-          repository: ZqinKing/wrt_release
-          ref: ${{ inputs.upstream_ref }}
-          path: wrt_release
-
-      - name: Apply overlay (keep only jdcloud_ipq60xx_libwrt)
-        working-directory: wrt_release
+      - name: Read build settings
         env:
-          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          INPUT_COMMIT: ${{ inputs.source_commit }}
         run: |
-          find wrt_core/compilecfg -maxdepth 1 -type f -name '*.ini' ! -name "${DEV}.ini" -delete
-          find wrt_core/deconfig -maxdepth 1 -type f -name '*.config' ! -name 'compile_base.config' -delete
-          find wrt_core/deconfig/fragments -maxdepth 1 -type f -name '*.config' -delete
-          cp -rf ../overlay/wrt_core/. wrt_core/
-          if [ -n "$SOURCE_COMMIT" ]; then
-            echo "COMMIT_HASH=$SOURCE_COMMIT" >> "wrt_core/compilecfg/${DEV}.ini"
+          ini="wrt_core/compilecfg/${DEV}.ini"
+          get() { awk -F= -v k="$1" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$ini"; }
+          commit="${INPUT_COMMIT:-$(get COMMIT_HASH)}"
+          {
+            echo "REPO_URL=$(get REPO_URL)"
+            echo "REPO_BRANCH=$(get REPO_BRANCH)"
+            echo "CONFIG_FRAGMENTS=$(get CONFIG_FRAGMENTS)"
+            echo "SRC_COMMIT=$commit"
+            echo "BUILD_DATE=$(TZ=Australia/Sydney date +%y.%m.%d_%H.%M.%S)"
+          } >> "$GITHUB_ENV"
+          cat "$ini"
+
+      - name: Clone LiBwrt/LibWrt
+        run: |
+          git clone --depth 1 -b "$REPO_BRANCH" "$REPO_URL" libwrt
+          if [ -n "$SRC_COMMIT" ]; then
+            git -C libwrt fetch --depth 1 origin "$SRC_COMMIT"
+            git -C libwrt checkout --detach FETCH_HEAD
           fi
-          ls -R wrt_core/compilecfg wrt_core/deconfig
-          cat "wrt_core/compilecfg/${DEV}.ini"
-
-      - name: Set Build Date
-        run: echo "BUILD_DATE=$(TZ=Australia/Sydney date +%y.%m.%d_%H.%M.%S)" >> "$GITHUB_ENV"
-
-      - name: Pre Clone
-        working-directory: wrt_release
-        run: ./wrt_core/pre_clone_action.sh "$DEV"
+          echo "SRC_HASH=$(git -C libwrt rev-parse HEAD)" >> "$GITHUB_ENV"
+          mirrors=libwrt/scripts/projectsmirrors.json
+          if [ -f "$mirrors" ]; then
+            grep -v -e '[.]cn/' -e tencent -e aliyun "$mirrors" > "$mirrors.new" && mv "$mirrors.new" "$mirrors"
+          fi
 
       - name: Cache Dependencies
         uses: actions/cache@v6.1.0
         with:
           path: |
-            wrt_release/action_build/.ccache
-            wrt_release/action_build/staging_dir
-          key: ubuntu-24.04-${{ env.DEV }}-${{ hashFiles('wrt_release/repo_flag') }}-${{ env.BUILD_DATE }}
+            libwrt/.ccache
+            libwrt/staging_dir/host*
+            libwrt/staging_dir/tool*
+          key: ubuntu-24.04-${{ env.DEV }}-${{ env.SRC_HASH }}
           restore-keys: |
-            ubuntu-24.04-${{ env.DEV }}-${{ hashFiles('wrt_release/repo_flag') }}-
+            ubuntu-24.04-${{ env.DEV }}-
 
-      - name: Refresh the cache
+      - name: Prepare restored cache
         run: |
-          if [ -d "./wrt_release/action_build/staging_dir" ]; then
-            find "./wrt_release/action_build/staging_dir" -type d -name "stamp" -not -path "*target*" | while read -r dir; do
-              find "$dir" -type f -exec touch {} +
+          if [ -d libwrt/staging_dir ]; then
+            find libwrt/staging_dir -type d -name stamp -not -path '*target*' | while read -r d; do
+              find "$d" -type f -exec touch {} +
             done
+            mkdir -p libwrt/tmp
+            echo 1 > libwrt/tmp/.build
           fi
 
-      - name: Build Firmware
-        working-directory: wrt_release
+      - name: Update feeds
+        working-directory: libwrt
+        run: |
+          sed -i -E '/(^|[[:space:]])video([[:space:]]|$)/d' feeds.conf.default
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Mirror fixes from wrt_release (athena-led, first-boot defaults, NSS kmod trimming)
+        working-directory: libwrt
+        run: |
+          # wrt_release add_ax6600_led
+          rm -rf package/emortal/luci-app-athena-led
+          git clone --depth=1 https://github.com/NONGFAH/luci-app-athena-led.git package/emortal/luci-app-athena-led
+          chmod +x package/emortal/luci-app-athena-led/root/usr/sbin/athena-led
+          chmod +x package/emortal/luci-app-athena-led/root/etc/init.d/athena_led
+
+          # wrt_release fix_default_set (uci-defaults, run on first boot)
+          install -Dm544 ../wrt_core/patches/991_custom_settings package/base-files/files/etc/uci-defaults/991_custom_settings
+          install -Dm544 ../wrt_core/patches/992_set-wifi-uci.sh package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh
+
+          # wrt_release remove_something_nss_kmod
+          for f in target/linux/qualcommax/ipq60xx/target.mk target/linux/qualcommax/ipq807x/target.mk; do
+            [ -f "$f" ] && sed -i 's/kmod-qca-nss-crypto//g' "$f"
+          done
+          mk=target/linux/qualcommax/Makefile
+          if [ -f "$mk" ]; then
+            for p in kmod-qca-nss-drv-eogremgr kmod-qca-nss-drv-gre kmod-qca-nss-drv-map-t kmod-qca-nss-drv-match kmod-qca-nss-drv-mirror kmod-qca-nss-drv-tun6rd kmod-qca-nss-drv-tunipip6 kmod-qca-nss-drv-vxlanmgr kmod-qca-nss-drv-wifi-meshmgr kmod-qca-nss-macsec; do
+              sed -i "/$p/d" "$mk"
+            done
+            sed -i 's/automount //g; s/cpufreq //g' "$mk"
+          fi
+
+          # wrt_release fix_kconfig_recursive_dependency
+          sed -i 's/<PACKAGE_[$]pkgname/!=y/g' scripts/package-metadata.pl
+
+      - name: Assemble config and pin device
+        working-directory: libwrt
+        run: |
+          cp -f "../wrt_core/deconfig/${DEV}.config" .config
+          cat ../wrt_core/deconfig/compile_base.config >> .config
+          for f in $(echo "$CONFIG_FRAGMENTS" | tr ',' ' '); do
+            cat "../wrt_core/deconfig/fragments/${f}.config" >> .config
+          done
+          make defconfig -j"$(nproc)"
+          bash ../wrt_core/pin_device.sh
+
+      - name: Download packages
+        if: ${{ !inputs.config_only }}
+        working-directory: libwrt
+        run: |
+          make tools/flock/compile -j1
+          make tools/libdeflate/compile -j1 V=s
+          make tools/zstd/compile -j1
+          make download -j"$(nproc)" || make download -j1 V=s
+
+      - name: Compile firmware
+        if: ${{ !inputs.config_only }}
+        working-directory: libwrt
+        run: make -j"$(nproc)" || make -j1 V=s
+
+      - name: Collect config and firmware
         env:
           CONFIG_ONLY: ${{ inputs.config_only }}
         run: |
-          if [ "$CONFIG_ONLY" = "true" ]; then
-            ./build.sh "$DEV" debug
-          else
-            ./build.sh "$DEV"
-          fi
-
-      - name: Collect config and source commit
-        working-directory: wrt_release
-        run: |
           mkdir -p firmware
-          cp -f action_build/.config "firmware/config-${DEV}-${BUILD_DATE}.txt"
-          echo "SRC_HASH=$(git -C action_build rev-parse HEAD)" >> "$GITHUB_ENV"
+          cp -f libwrt/.config "firmware/config-${DEV}-${BUILD_DATE}.txt"
+          if [ "$CONFIG_ONLY" != "true" ]; then
+            find libwrt/bin/targets -type f -name '*re-cs-02*' -exec cp -f -t firmware/ {} +
+          fi
           ls -lh firmware
 
       - name: Verify firmware
         if: ${{ !inputs.config_only }}
-        working-directory: wrt_release
         run: |
           ls firmware | grep -q 're-cs-02.*sysupgrade' || { echo 'jdcloud_re-cs-02 sysupgrade image not found'; ls -l firmware; exit 1; }
-
-      - name: Delete Old Cache
-        if: ${{ !inputs.config_only }}
-        run: |
-          gh cache list --key ubuntu-24.04-${{ env.DEV }}-${{ hashFiles('wrt_release/repo_flag') }}- --json key --jq '.[] | .key' | while read -r key; do
-            gh cache delete "$key"
-          done
 
       - name: Upload config
         uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ env.BUILD_DATE }}_${{ env.DEV }}_config
-          path: wrt_release/firmware/config-*.txt
+          path: firmware/config-*.txt
 
       - name: Release Firmware
         if: ${{ !inputs.config_only }}
@@ -152,13 +191,12 @@ jobs:
         with:
           tag_name: ${{ env.DEV }}-${{ env.BUILD_DATE }}
           files: |
-            wrt_release/firmware/*re-cs-02*
-            wrt_release/firmware/config-*.txt
+            firmware/*re-cs-02*
+            firmware/config-*.txt
           body: |
             JDCloud Athena AX6600 (jdcloud_re-cs-02) - LiBwrt NSS
             - factory.bin for U-Boot Web
             - sysupgrade.bin for upgrade via luci or cli
 
-            framework: ZqinKing/wrt_release @ ${{ inputs.upstream_ref }}
-            source: LiBwrt/openwrt-6.x (25.12-nss)
+            source: ${{ env.REPO_URL }} (${{ env.REPO_BRANCH }})
             commit: ${{ env.SRC_HASH }}
