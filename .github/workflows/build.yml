@@ -20,14 +20,14 @@ env:
   UPSTREAM_REPO: JuliusBairaktaris/openwrt-ppe-nss
   UPSTREAM_REF: ppe-nss
   NSS_REPO: JuliusBairaktaris/nss-packages
-  NSS_REF: edma-nss
+  NSS_REF: ppe-nss
   VARIANT: ppe-nss
   RELEASE_PREFIX: ppe-nss
   KEEP: "2"                     # newest releases to retain, per prefix
   # nss-firmware, and the luci fork carrying luci-app-ppe-qos (openwrt/luci
   # PR 8965), which prepare-build.sh swaps in for the default luci feed.
   FEEDS: |
-    src-git nss https://github.com/JuliusBairaktaris/nss-packages.git;edma-nss
+    src-git nss https://github.com/JuliusBairaktaris/nss-packages.git;ppe-nss
     src-git luci https://github.com/JuliusBairaktaris/luci.git;luci-app-ppe-qos
   # luci-app-athena-led is not in any OpenWrt feed; taken from here instead.
   ATHENA_REPO: VIKINGYFY/immortalwrt
