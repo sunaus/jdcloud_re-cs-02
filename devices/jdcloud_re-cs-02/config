@@ -92,6 +92,7 @@ CONFIG_PACKAGE_luci-app-athena-led=y
 ## cannot be installed later with apk - everything needed goes in the image.
 ## Left out, as prepare-build.sh fails on any symbol defconfig drops:
 ## kmod-nf-conntrack6 is gone from OpenWrt main (folded into kmod-nf-conntrack),
+## kmod-nf-log6 is gone too (empty since 5.13, folded into kmod-nf-log),
 ## kmod-lib-crc32c is 6.12-only (crc32c is in the 6.18 kernel lib).
 ## kmod-nft-offload carries the wired offload: fw4 hardware flow offloading
 ## (998-flow-offload turns it on at first boot) is what drives the PPE.
@@ -151,7 +152,6 @@ CONFIG_PACKAGE_kmod-nf-flow=y
 CONFIG_PACKAGE_kmod-nf-ipt=y
 CONFIG_PACKAGE_kmod-nf-ipvs=y
 CONFIG_PACKAGE_kmod-nf-log=y
-CONFIG_PACKAGE_kmod-nf-log6=y
 CONFIG_PACKAGE_kmod-nf-nat=y
 CONFIG_PACKAGE_kmod-nf-reject=y
 CONFIG_PACKAGE_kmod-nf-reject6=y
