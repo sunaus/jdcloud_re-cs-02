@@ -193,29 +193,43 @@ jobs:
           key: dl-${{ github.run_id }}
           restore-keys: dl-
 
+      # Downloads are network-bound, so run more of them than there are CPUs.
+      # Each attempt is time-limited, because a stalled mirror never exits and
+      # so would never reach the retry; files finished by an attempt are kept
+      # for the next one. If every attempt fails the step fails, but the next
+      # step still saves what was downloaded, so a re-run continues from there.
       - name: Download sources
         id: download
+        continue-on-error: true
+        timeout-minutes: 45
         working-directory: openwrt
         run: |
           set -euo pipefail
           mkdir -p dl
-          before=$(find dl -maxdepth 1 -type f | wc -l)
+          ok=0
           for attempt in 1 2 3; do
-            make download -j"$(nproc)" V=s && break
-            echo "Download attempt $attempt failed; retrying..."
+            if timeout 12m make download -j16 V=s; then ok=1; break; fi
+            echo "Download attempt $attempt failed or timed out; retrying..."
             sleep 5
           done
-          echo "grew=$(($(find dl -maxdepth 1 -type f | wc -l) > before))" >>"$GITHUB_OUTPUT"
+          [ "$ok" = 1 ]
 
-      # One entry per run that fetched something new: the first job to get here
-      # saves, the others find the key taken. Each job restores the newest
-      # entry, so it grows to the union of every group's sources.
+      # One entry per run attempt, saved even when the download failed or was
+      # cut short. Each job restores the newest entry, so it grows to the union
+      # of every run's sources. Entries count against the repository cache
+      # quota: delete old dl- entries from the Caches page now and then.
       - name: Save sources
-        if: steps.download.outputs.grew == 1
+        if: always()
         uses: actions/cache/save@v6
         with:
           path: openwrt/dl
-          key: dl-${{ github.run_id }}
+          key: dl-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Fail if download incomplete
+        if: steps.download.outcome != 'success'
+        run: |
+          echo "::error::source download did not complete; partial downloads were cached, re-run the job to continue"
+          exit 1
 
       # ccache hashes neither the assembler nor cc1, so the key covers every
       # toolchain input and a change there starts from an empty cache. GitHub
