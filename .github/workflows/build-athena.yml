@@ -8,7 +8,9 @@ name: Build Athena
 #     cached (staging_dir/host, hostpkg, toolchain-*), so a run whose tools and
 #     toolchain inputs did not change skips them
 #   - when the tree would otherwise build LLVM from source for BPF, the
-#     runner's LLVM is used instead (checked with a BPF smoke test first)
+#     runner's LLVM closest to the version the tree builds is used instead
+#     (exact, same series, same major, lower major, higher major; each tried
+#     in that order with a BPF smoke test)
 #   - quiet curl and a 5-minute heartbeat keep the log small and show what is
 #     running; each stalled download or hung tool build is bounded and retried
 #   - the sources cache (dl-) is saved only when the run fetched files the
@@ -137,13 +139,14 @@ jobs:
       # or running past an hour. -sS drops the progress meter but keeps errors.
       CURL_OPTIONS: "-sS --speed-limit 2048 --speed-time 30 --max-time 3600"
     steps:
-      # clang, llvm and lld are only used if the tree would build LLVM for BPF.
+      # The runner LLVM, if the tree needs one, is installed later by the step
+      # that picks it.
       - name: Install build dependencies
         run: |
           set -euo pipefail
           sudo apt-get update || true
           sudo apt-get install -y \
-            bzip2 clang g++ gawk gcc git glibc-source libncurses-dev lld llvm make rsync
+            bzip2 g++ gawk gcc git glibc-source libncurses-dev make rsync
 
       - name: Write heartbeat helper
         run: |
@@ -189,11 +192,19 @@ jobs:
 
       # In this tree tools/llvm-bpf is built when CONFIG_USE_LLVM_BUILD=y, and
       # the BPF toolchain choice (toolchain/Config.in) is only settable with
-      # CONFIG_DEVEL=y. The swap therefore sets DEVEL, BPF_TOOLCHAIN_HOST and its
-      # path, and is kept only if the runner's LLVM passes a BPF smoke test,
-      # defconfig ends with USE_LLVM_HOST=y and no USE_LLVM_BUILD, and the set of
-      # selected packages and target symbols did not change. Otherwise .config is
-      # restored and the tree builds LLVM itself.
+      # CONFIG_DEVEL=y. The version the tree builds is PKG_VERSION in
+      # tools/llvm-bpf/Makefile. The runner LLVM is chosen by closeness to it:
+      #   1. exactly that version
+      #   2. the highest patch of the same X.Y series
+      #   3. the highest version of the same major
+      #   4. the nearest lower major, highest version
+      #   5. the nearest higher major, highest version
+      # llvm-<major> of the wanted major (then the two below it, then the
+      # default llvm) is installed first; every installed candidate is tried in
+      # that order and the first one that passes a BPF smoke test is used. The
+      # swap is kept only if defconfig ends with USE_LLVM_HOST=y and no
+      # USE_LLVM_BUILD, and the set of selected packages and target symbols did
+      # not change; otherwise .config is restored and the tree builds LLVM itself.
       - name: Use runner LLVM for BPF when the tree would build its own
         working-directory: openwrt
         run: |
@@ -206,31 +217,121 @@ jobs:
             echo "::warning::toolchain/Config.in has no BPF_TOOLCHAIN_HOST option; LLVM will be built from source"
             exit 0
           fi
-          cfg=$(command -v llvm-config || true)
-          [ -n "$cfg" ] || cfg=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -n1 || true)
-          if [ -z "$cfg" ]; then
-            echo "::warning::no llvm-config on the runner; LLVM will be built from source"
+          want=$(sed -n 's/^PKG_VERSION:=//p' tools/llvm-bpf/Makefile | head -n1)
+          if ! [[ "$want" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::warning::could not read the expected LLVM version from tools/llvm-bpf/Makefile; LLVM will be built from source"
             exit 0
           fi
-          root=$("$cfg" --prefix)
-          for t in clang llc opt llvm-dis llvm-strip; do
-            if [ ! -x "$root/bin/$t" ]; then
-              echo "::warning::$root/bin/$t is missing; LLVM will be built from source"
-              exit 0
+          wmaj=${want%%.*}
+          wser=${want%.*}
+          echo "The tree would build LLVM $want from source"
+
+          installed=0
+          for m in "$wmaj" $((wmaj - 1)) $((wmaj - 2)); do
+            if apt-cache show "llvm-$m" >/dev/null 2>&1 &&
+               sudo apt-get install -y "clang-$m" "llvm-$m" "lld-$m"; then
+              installed=1
+              break
             fi
           done
-          smoke=$(mktemp -d)
-          printf 'int bpf_smoke(void) { return 0; }\n' >"$smoke/s.c"
-          if ! { "$root/bin/clang" --target=bpfel -O2 -emit-llvm -c "$smoke/s.c" -o "$smoke/s.bc" &&
-                 "$root/bin/opt" -O2 -mtriple=bpfel <"$smoke/s.bc" >"$smoke/s.opt" &&
-                 "$root/bin/llvm-dis" <"$smoke/s.opt" >"$smoke/s.S" &&
-                 "$root/bin/llc" -march=bpfel -mcpu=v3 -filetype=obj -o "$smoke/s.o" <"$smoke/s.S"; }; then
-            echo "::warning::runner LLVM failed the BPF smoke test; LLVM will be built from source"
+          if [ "$installed" = 0 ]; then
+            sudo apt-get install -y clang llvm lld || true
+          fi
+
+          list=$(
+            for c in $(command -v llvm-config || true) /usr/bin/llvm-config-*; do
+              [ -x "$c" ] || continue
+              v=$("$c" --version 2>/dev/null | sed 's/[^0-9.].*//' || true)
+              [ -n "$v" ] || continue
+              printf '%s %s\n' "$v" "$("$c" --prefix)"
+            done | sort -u
+          )
+          if [ -z "$list" ]; then
+            echo "::warning::no LLVM found on the runner; LLVM will be built from source"
             exit 0
           fi
+
+          cat >"$RUNNER_TEMP/pick-llvm.py" <<'PY'
+          import sys
+          want = tuple(int(x) for x in sys.argv[1].split('.'))
+          items = []
+          for line in sys.stdin:
+              parts = line.split(None, 1)
+              if len(parts) != 2:
+                  continue
+              t = tuple(int(x) for x in parts[0].split('.')[:3])
+              t = t + (0,) * (3 - len(t))
+              items.append((t, parts[1].strip()))
+          def key(it):
+              t = it[0]
+              if t == want:
+                  return (0, ())
+              if t[:2] == want[:2]:
+                  return (1, (-t[2],))
+              if t[0] == want[0]:
+                  return (2, (-t[1], -t[2]))
+              if t[0] < want[0]:
+                  return (3, (want[0] - t[0], -t[1], -t[2]))
+              return (4, (t[0] - want[0], -t[1], -t[2]))
+          for t, root in sorted(items, key=key):
+              print('.'.join(str(x) for x in t), root)
+          PY
+          ordered=$(printf '%s\n' "$list" | python3 "$RUNNER_TEMP/pick-llvm.py" "$want")
+          echo "Runner LLVM candidates, best first:"
+          echo "$ordered"
+
+          smoke_test() {
+            local r="$1" d
+            d=$(mktemp -d)
+            printf 'int bpf_smoke(void) { return 0; }\n' >"$d/s.c"
+            "$r/bin/clang" --target=bpfel -O2 -emit-llvm -c "$d/s.c" -o "$d/s.bc" &&
+              "$r/bin/opt" -O2 -mtriple=bpfel <"$d/s.bc" >"$d/s.opt" &&
+              "$r/bin/llvm-dis" <"$d/s.opt" >"$d/s.S" &&
+              "$r/bin/llc" -march=bpfel -mcpu=v3 -filetype=obj -o "$d/s.o" <"$d/s.S"
+          }
+
+          chosen=""
+          chosen_ver=""
+          while read -r ver root; do
+            [ -n "$root" ] || continue
+            missing=0
+            for t in clang llc opt llvm-dis llvm-strip; do
+              [ -x "$root/bin/$t" ] || missing=1
+            done
+            if [ "$missing" = 1 ]; then
+              echo "Skipping LLVM $ver at $root: a required tool is missing"
+              continue
+            fi
+            if smoke_test "$root"; then
+              chosen="$root"
+              chosen_ver="$ver"
+              break
+            fi
+            echo "Skipping LLVM $ver at $root: BPF smoke test failed"
+          done <<<"$ordered"
+          if [ -z "$chosen" ]; then
+            echo "::warning::no runner LLVM passed the BPF smoke test; LLVM will be built from source"
+            exit 0
+          fi
+
+          if [ "$chosen_ver" = "$want" ]; then
+            how="exactly the version the tree builds"
+          elif [ "${chosen_ver%.*}" = "$wser" ]; then
+            how="same $wser series, different patch"
+          elif [ "${chosen_ver%%.*}" = "$wmaj" ]; then
+            how="same major $wmaj, different minor"
+          else
+            how="different major (the tree builds $want)"
+          fi
+          if [ "${chosen_ver%%.*}" = "$wmaj" ]; then
+            echo "::notice::using runner LLVM $chosen_ver at $chosen ($how)"
+          else
+            echo "::warning::using runner LLVM $chosen_ver at $chosen ($how)"
+          fi
+
           cp .config .config.pre-llvm
           sed -i '/^CONFIG_BPF_TOOLCHAIN_/d; /^# CONFIG_BPF_TOOLCHAIN_.* is not set$/d; /^CONFIG_DEVEL=/d; /^# CONFIG_DEVEL is not set$/d' .config
-          printf 'CONFIG_DEVEL=y\nCONFIG_BPF_TOOLCHAIN_HOST=y\nCONFIG_BPF_TOOLCHAIN_HOST_PATH="%s"\n' "$root" >>.config
+          printf 'CONFIG_DEVEL=y\nCONFIG_BPF_TOOLCHAIN_HOST=y\nCONFIG_BPF_TOOLCHAIN_HOST_PATH="%s"\n' "$chosen" >>.config
           make defconfig
           pkgs() { grep -E '^CONFIG_(PACKAGE|TARGET)_[A-Za-z0-9_.+-]+=[ym]$' "$1" | sort; }
           if ! grep -qxF 'CONFIG_BPF_TOOLCHAIN_HOST=y' .config ||
@@ -242,8 +343,13 @@ jobs:
             echo "::warning::host LLVM was not honoured by defconfig or changed the package set; LLVM will be built from source"
             exit 0
           fi
-          echo "Using runner LLVM at $root for BPF"
-          "$root/bin/clang" --version | head -n1
+          echo "Using runner LLVM $chosen_ver at $chosen for BPF"
+          "$chosen/bin/clang" --version | head -n1
+          {
+            echo "## Runner LLVM"
+            echo "- tree builds: \`$want\`"
+            echo "- used: \`$chosen_ver\` at \`$chosen\` ($how)"
+          } >>"$GITHUB_STEP_SUMMARY"
 
       - name: Set reproducible-build env
         working-directory: openwrt
@@ -259,8 +365,8 @@ jobs:
 
       # The key covers every input of the host tools and the toolchain: the
       # tools/ and toolchain/ trees, the toolchain, BPF/LLVM and Rust config
-      # symbols, and the runner's compiler. A change in any of them starts from
-      # scratch.
+      # symbols (the host LLVM path included), and the runner's compiler. A
+      # change in any of them starts from scratch.
       - name: Compute host cache key
         id: hostkey
         run: |
