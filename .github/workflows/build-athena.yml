@@ -486,6 +486,10 @@ jobs:
           key: ${{ steps.ccache.outputs.prefix }}${{ github.run_id }}
           restore-keys: ${{ steps.ccache.outputs.prefix }}
 
+      # OpenWrt's rules.mk exports CCACHE_DIR=$(TOPDIR)/.ccache while make runs,
+      # but a command run outside make reads ccache's default directory. The
+      # statistics are therefore taken with CCACHE_DIR set to the same path, and
+      # zeroed first so they cover this build step only.
       - name: Build
         working-directory: openwrt
         env:
@@ -493,10 +497,14 @@ jobs:
           CCACHE_MAXSIZE: 4G
         run: |
           set -euo pipefail
+          export CCACHE_DIR="$PWD/.ccache"
+          echo "ccache directory before the build: $(du -sh "$CCACHE_DIR" 2>/dev/null | cut -f1)"
+          staging_dir/host/bin/ccache -z >/dev/null
           bash "$HEARTBEAT" &
           hb=$!
           trap 'kill "$hb" 2>/dev/null || true' EXIT
           make -j"$(nproc)" || make -j1 V=s
+          echo "ccache directory after the build: $(du -sh "$CCACHE_DIR" | cut -f1)"
           staging_dir/host/bin/ccache -s
 
       # Saved even when the build failed, so a re-run continues from here, but
@@ -616,6 +624,6 @@ jobs:
             gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$prefix" --limit 100 --json id,key,createdAt --jq 'sort_by(.createdAt) | reverse | .[1:][] | [.id, .key] | @tsv' |
               while IFS=$'\t' read -r id key; do
                 [ -n "$id" ] || continue
-                gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id ($key)"
+                gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id"
               done
           done
