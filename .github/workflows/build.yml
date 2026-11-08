@@ -123,8 +123,10 @@ jobs:
       # connect time, so a transfer that stalls after connecting would hang the
       # build for ever. Give up on a transfer below 2 KB/s for 30 s (curl
       # retries it, then download.pl tries the next mirror), or running past an
-      # hour.
-      CURL_OPTIONS: "--speed-limit 2048 --speed-time 30 --max-time 3600"
+      # hour. -sS drops the progress meter, which would otherwise add one log
+      # line per update and make the log too big for the web page to follow,
+      # but still prints errors.
+      CURL_OPTIONS: "-sS --speed-limit 2048 --speed-time 30 --max-time 3600"
     steps:
       - name: Install build dependencies
         run: |
@@ -199,20 +201,33 @@ jobs:
           key: dl-${{ github.run_id }}
           restore-keys: dl-
 
-      # The host tools are built on their own, first, with V=s so every download
-      # and compile shows in the log, and under a time limit so a hang fails the
-      # step instead of eating the job. They cannot be pre-downloaded with
-      # `make tools/download`: the bindgen and cbindgen vendor tarballs are
-      # generated when their mirror copy is missing, and that needs the host
-      # zstd, which exists only once tools/zstd has been built.
+      # The host tools are built on their own, first, under a time limit so a
+      # hang fails the step instead of eating the job. They cannot be
+      # pre-downloaded with `make tools/download`: the bindgen and cbindgen
+      # vendor tarballs are generated when their mirror copy is missing, and
+      # that needs the host zstd, which exists only once tools/zstd has been
+      # built. No V=s here: it prints every compile and link command in full
+      # (the libressl link line alone is several KB), which made the log too
+      # big for the web page to keep up. The heartbeat prints the longest-
+      # running compile, download and cargo processes every 5 minutes, so a
+      # stall can be told from a long compile.
       - name: Build host tools
         timeout-minutes: 130
         working-directory: openwrt
         run: |
           set -euo pipefail
+          heartbeat() {
+            while sleep 300; do
+              echo "== heartbeat $(date -u +%H:%M:%S), longest-running compile/download processes:"
+              { ps -eo etimes,pcpu,args --sort=-etimes | grep -E 'cc1|g\+\+|/gcc|cargo|rustc|curl|cmake|ninja' | grep -v grep | head -8 | cut -c1-200; } || true
+            done
+          }
+          heartbeat &
+          hb=$!
+          trap 'kill "$hb" 2>/dev/null || true' EXIT
           ok=0
           for attempt in 1 2; do
-            if timeout 60m make -j"$(nproc)" tools/install V=s; then ok=1; break; fi
+            if timeout 60m make -j"$(nproc)" tools/install; then ok=1; break; fi
             echo "Host tools attempt $attempt failed or timed out; retrying..."
             sleep 5
           done
@@ -276,6 +291,15 @@ jobs:
           CCACHE_MAXSIZE: 4G
         run: |
           set -euo pipefail
+          heartbeat() {
+            while sleep 300; do
+              echo "== heartbeat $(date -u +%H:%M:%S), longest-running compile/download processes:"
+              { ps -eo etimes,pcpu,args --sort=-etimes | grep -E 'cc1|g\+\+|/gcc|cargo|rustc|curl|cmake|ninja' | grep -v grep | head -8 | cut -c1-200; } || true
+            done
+          }
+          heartbeat &
+          hb=$!
+          trap 'kill "$hb" 2>/dev/null || true' EXIT
           make -j"$(nproc)" || make -j1 V=s
           staging_dir/host/bin/ccache -s
 
