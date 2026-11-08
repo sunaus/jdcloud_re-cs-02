@@ -193,42 +193,35 @@ jobs:
           key: dl-${{ github.run_id }}
           restore-keys: dl-
 
-      # Downloads are network-bound, so run more of them than there are CPUs.
-      # Each attempt is time-limited, because a stalled mirror never exits and
-      # so would never reach the retry; files finished by an attempt are kept
-      # for the next one. If every attempt fails the step fails, but the next
-      # step still saves what was downloaded, so a re-run continues from there.
+      # Pre-download only what every build needs: the host tools, the toolchain
+      # and the target (kernel). A plain `make download` also fetches the
+      # sources of packages this image does not select (broadcom-wl alone is
+      # 86 MB), at the ~45 KB/s per connection the OpenWrt source CDN gives the
+      # runner. The selected packages are fetched by `make` itself in the Build
+      # step. Downloads are network-bound, so run more of them than there are
+      # CPUs. Each attempt is time-limited, because a stalled mirror never exits
+      # and so would never reach the retry; files finished by an attempt are kept
+      # for the next one.
       - name: Download sources
         id: download
         continue-on-error: true
-        timeout-minutes: 45
+        timeout-minutes: 120
         working-directory: openwrt
         run: |
           set -euo pipefail
           mkdir -p dl
           ok=0
           for attempt in 1 2 3; do
-            if timeout 12m make download -j16 V=s; then ok=1; break; fi
+            if timeout 40m make -j32 tools/download toolchain/download target/download V=s; then ok=1; break; fi
             echo "Download attempt $attempt failed or timed out; retrying..."
             sleep 5
           done
           [ "$ok" = 1 ]
 
-      # One entry per run attempt, saved even when the download failed or was
-      # cut short. Each job restores the newest entry, so it grows to the union
-      # of every run's sources. Entries count against the repository cache
-      # quota: delete old dl- entries from the Caches page now and then.
-      - name: Save sources
-        if: always()
-        uses: actions/cache/save@v6
-        with:
-          path: openwrt/dl
-          key: dl-${{ github.run_id }}-${{ github.run_attempt }}
-
       - name: Fail if download incomplete
         if: steps.download.outcome != 'success'
         run: |
-          echo "::error::source download did not complete; partial downloads were cached, re-run the job to continue"
+          echo "::error::source download did not complete; re-run the job, the sources downloaded so far are kept"
           exit 1
 
       # ccache hashes neither the assembler nor cc1, so the key covers every
@@ -262,6 +255,18 @@ jobs:
           set -euo pipefail
           make -j"$(nproc)" || make -j1 V=s
           staging_dir/host/bin/ccache -s
+
+      # One entry per run attempt, saved after the build so it holds the
+      # package sources `make` fetched too, and saved even when the download or
+      # the build failed or was cut short. Each job restores the newest entry,
+      # so a re-run continues from here. Entries count against the repository
+      # cache quota: delete old dl- entries from the Caches page now and then.
+      - name: Save sources
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: openwrt/dl
+          key: dl-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload images
         run: |
