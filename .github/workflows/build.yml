@@ -119,6 +119,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       DEVICE: ${{ matrix.device }}
       TAG: ${{ needs.release.outputs.tag }}
+      # scripts/download.pl passes this to curl. Its own options only bound the
+      # connect time, so a transfer that stalls after connecting would hang the
+      # build for ever. Give up on a transfer below 2 KB/s for 30 s (curl
+      # retries it, then download.pl tries the next mirror), or running past an
+      # hour.
+      CURL_OPTIONS: "--speed-limit 2048 --speed-time 30 --max-time 3600"
     steps:
       - name: Install build dependencies
         run: |
@@ -193,13 +199,28 @@ jobs:
           key: dl-${{ github.run_id }}
           restore-keys: dl-
 
+      # The host tools are built on their own, first, with V=s so every download
+      # and compile shows in the log, and under a time limit so a hang fails the
+      # step instead of eating the job. They cannot be pre-downloaded with
+      # `make tools/download`: the bindgen and cbindgen vendor tarballs are
+      # generated when their mirror copy is missing, and that needs the host
+      # zstd, which exists only once tools/zstd has been built.
+      - name: Build host tools
+        timeout-minutes: 130
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          ok=0
+          for attempt in 1 2; do
+            if timeout 60m make -j"$(nproc)" tools/install V=s; then ok=1; break; fi
+            echo "Host tools attempt $attempt failed or timed out; retrying..."
+            sleep 5
+          done
+          [ "$ok" = 1 ]
+
       # Pre-download only the toolchain and the target (kernel). A plain
       # `make download` also fetches the sources of packages this image does
-      # not select (broadcom-wl alone is 86 MB). The host tools are left to the
-      # Build step as well: `make tools/download` on its own fails, because the
-      # bindgen and cbindgen vendor tarballs are generated when their mirror
-      # copy is missing, and that needs the host zstd, which exists only once
-      # tools/zstd has been built. The selected packages are fetched by `make`
+      # not select (broadcom-wl alone is 86 MB); those are fetched by `make`
       # itself in the Build step. Downloads are network-bound, so run more of
       # them than there are CPUs. Each attempt is time-limited, because a
       # stalled mirror never exits and so would never reach the retry; files
