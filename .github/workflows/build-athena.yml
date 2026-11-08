@@ -4,9 +4,10 @@ name: Build Athena
 # default flavour, manual dispatch), built faster:
 #   check -> draft release -> build -> publish -> prune
 # What differs from build.yml:
-#   - the host tools and the cross toolchain are built in their own steps and
-#     cached (staging_dir/host, hostpkg, toolchain-*), so a run whose tools and
-#     toolchain inputs did not change skips them
+#   - the host tools and the cross toolchain are built in their own steps
+#     through make's own stamp targets and cached (staging_dir/host, hostpkg,
+#     toolchain-*), so a run whose tools and toolchain inputs did not change
+#     skips them
 #   - when the tree would otherwise build LLVM from source for BPF, the
 #     runner's LLVM closest to the version the tree builds is used instead
 #     (exact, same series, same major, lower major, higher major; each tried
@@ -366,7 +367,8 @@ jobs:
       # The key covers every input of the host tools and the toolchain: the
       # tools/ and toolchain/ trees, the toolchain, BPF/LLVM and Rust config
       # symbols (the host LLVM path included), and the runner's compiler. A
-      # change in any of them starts from scratch.
+      # change in any of them starts from scratch. v2: the first entries were
+      # saved without make's own tools/toolchain stamps and could not be reused.
       - name: Compute host cache key
         id: hostkey
         run: |
@@ -376,7 +378,7 @@ jobs:
             grep -E '^CONFIG_(ARCH|TARGET_BOARD|TARGET_SUBTARGET|TARGET_ARCH_PACKAGES|BINUTILS_|GCC_|USE_MUSL|USE_GLIBC|LIBC|BPF_TOOLCHAIN|USE_LLVM_|USE_RUST_|BUILD_BINDGEN)' openwrt/.config || true
             gcc --version; as --version
           } | sha256sum | cut -c1-16)
-          echo "key=athena-host-${{ env.VARIANT }}-$sum" >>"$GITHUB_OUTPUT"
+          echo "key=athena-host-${{ env.VARIANT }}-v2-$sum" >>"$GITHUB_OUTPUT"
 
       - name: Restore host tools and toolchain
         id: hostcache
@@ -388,14 +390,16 @@ jobs:
             openwrt/staging_dir/toolchain-*
           key: ${{ steps.hostkey.outputs.key }}
 
-      # make rebuilds a stage whose stamp is older than its inputs, and a cache
-      # restore gives every file a fresh mtime in arbitrary order.
+      # make skips a stage whose stamp is not older than its inputs, and a cache
+      # restore gives every file a fresh mtime in arbitrary order. All stamps are
+      # set to one common second so none is older than another.
       - name: Refresh restored stamps
         if: steps.hostcache.outputs.cache-hit == 'true'
         run: |
           set -euo pipefail
+          now=$(date +%Y%m%d%H%M.%S)
           find openwrt/staging_dir -type d -name stamp -not -path '*target*' | while read -r dir; do
-            find "$dir" -type f -exec touch {} +
+            find "$dir" -type f -exec touch -t "$now" {} +
           done
           echo "restored host cache: ${{ steps.hostkey.outputs.key }}"
 
@@ -411,8 +415,33 @@ jobs:
         run: |
           echo "n=$(find openwrt/dl -maxdepth 1 -type f 2>/dev/null | wc -l)" >>"$GITHUB_OUTPUT"
 
+      # The ccache is restored before the host tools and the toolchain, so that
+      # a cold build of those also hits it.
+      - name: Compute ccache key
+        id: ccache
+        run: |
+          set -euo pipefail
+          tree=$(git -C openwrt rev-parse HEAD:toolchain)
+          sum=$({
+            echo "$tree"
+            grep -E '^CONFIG_(BINUTILS|GCC|LIBC|MUSL|GLIBC)_' openwrt/.config
+            gcc --version; as --version
+          } | sha256sum | cut -c1-16)
+          echo "prefix=ccache-${{ env.VARIANT }}-$sum-" >>"$GITHUB_OUTPUT"
+
+      - name: Restore ccache
+        uses: actions/cache@v6
+        with:
+          path: openwrt/.ccache
+          key: ${{ steps.ccache.outputs.prefix }}${{ github.run_id }}
+          restore-keys: ${{ steps.ccache.outputs.prefix }}
+
       # Bounded and retried: a hung tool build fails the attempt, not the job.
-      # A tool that is already installed makes this a no-op after a cache hit.
+      # `make tools/install` runs the rules of every tool, and those need the
+      # per-tool build directories, which are not cached, so it would build all
+      # of them again. The tools stamp is the shortcut make itself takes (via
+      # `prepare`): it skips the work when nothing under tools/ is newer than the
+      # stamp, and otherwise runs tools/compile and touches the stamp.
       - name: Build host tools
         timeout-minutes: 150
         working-directory: openwrt
@@ -421,9 +450,24 @@ jobs:
           bash "$HEARTBEAT" &
           hb=$!
           trap 'kill "$hb" 2>/dev/null || true' EXIT
+          stamp=$(make -s val.tools/stamp-compile 2>/dev/null | tail -n 1 || true)
+          case "$stamp" in
+            */staging_dir/host/stamp/.tools_compile*)
+              target="$stamp"
+              if [ -f "$stamp" ]; then
+                echo "tools stamp present: ${stamp##*/}"
+              else
+                echo "tools stamp missing, the host tools will be built: ${stamp##*/}"
+              fi
+              ;;
+            *)
+              echo "::warning::could not resolve the tools stamp ('$stamp'); building tools/install"
+              target=tools/install
+              ;;
+          esac
           ok=0
           for attempt in 1 2; do
-            if timeout 70m make -j"$(nproc)" tools/install; then ok=1; break; fi
+            if timeout 70m make -j"$(nproc)" "$target"; then ok=1; break; fi
             echo "Host tools attempt $attempt failed or timed out; retrying..."
             sleep 5
           done
@@ -445,6 +489,8 @@ jobs:
           done
           [ "$ok" = 1 ]
 
+      # Same shortcut for the toolchain: its stamp lives in the toolchain
+      # directory (cached) and also pulls in the tools stamp.
       - name: Build toolchain
         timeout-minutes: 120
         working-directory: openwrt
@@ -453,7 +499,22 @@ jobs:
           bash "$HEARTBEAT" &
           hb=$!
           trap 'kill "$hb" 2>/dev/null || true' EXIT
-          make -j"$(nproc)" toolchain/install
+          stamp=$(make -s val.toolchain/stamp-compile 2>/dev/null | tail -n 1 || true)
+          case "$stamp" in
+            */staging_dir/toolchain-*/stamp/.toolchain_compile*)
+              target="$stamp"
+              if [ -f "$stamp" ]; then
+                echo "toolchain stamp present: ${stamp##*/}"
+              else
+                echo "toolchain stamp missing, the toolchain will be built: ${stamp##*/}"
+              fi
+              ;;
+            *)
+              echo "::warning::could not resolve the toolchain stamp ('$stamp'); building toolchain/install"
+              target=toolchain/install
+              ;;
+          esac
+          make -j"$(nproc)" "$target"
 
       # Saved as soon as the tools and the toolchain are built, so a later
       # failure in the package build does not lose them.
@@ -466,25 +527,6 @@ jobs:
             openwrt/staging_dir/hostpkg
             openwrt/staging_dir/toolchain-*
           key: ${{ steps.hostkey.outputs.key }}
-
-      - name: Compute ccache key
-        id: ccache
-        run: |
-          set -euo pipefail
-          tree=$(git -C openwrt rev-parse HEAD:toolchain)
-          sum=$({
-            echo "$tree"
-            grep -E '^CONFIG_(BINUTILS|GCC|LIBC|MUSL|GLIBC)_' openwrt/.config
-            gcc --version; as --version
-          } | sha256sum | cut -c1-16)
-          echo "prefix=ccache-${{ env.VARIANT }}-$sum-" >>"$GITHUB_OUTPUT"
-
-      - name: Restore ccache
-        uses: actions/cache@v6
-        with:
-          path: openwrt/.ccache
-          key: ${{ steps.ccache.outputs.prefix }}${{ github.run_id }}
-          restore-keys: ${{ steps.ccache.outputs.prefix }}
 
       # OpenWrt's rules.mk exports CCACHE_DIR=$(TOPDIR)/.ccache while make runs,
       # but a command run outside make reads ccache's default directory. The
@@ -624,6 +666,6 @@ jobs:
             gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$prefix" --limit 100 --json id,key,createdAt --jq 'sort_by(.createdAt) | reverse | .[1:][] | [.id, .key] | @tsv' |
               while IFS=$'\t' read -r id key; do
                 [ -n "$id" ] || continue
-                gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id"
+                gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id ($key)"
               done
           done
