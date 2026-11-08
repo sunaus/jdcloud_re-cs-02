@@ -193,15 +193,17 @@ jobs:
           key: dl-${{ github.run_id }}
           restore-keys: dl-
 
-      # Pre-download only what every build needs: the host tools, the toolchain
-      # and the target (kernel). A plain `make download` also fetches the
-      # sources of packages this image does not select (broadcom-wl alone is
-      # 86 MB), at the ~45 KB/s per connection the OpenWrt source CDN gives the
-      # runner. The selected packages are fetched by `make` itself in the Build
-      # step. Downloads are network-bound, so run more of them than there are
-      # CPUs. Each attempt is time-limited, because a stalled mirror never exits
-      # and so would never reach the retry; files finished by an attempt are kept
-      # for the next one.
+      # Pre-download only the toolchain and the target (kernel). A plain
+      # `make download` also fetches the sources of packages this image does
+      # not select (broadcom-wl alone is 86 MB). The host tools are left to the
+      # Build step as well: `make tools/download` on its own fails, because the
+      # bindgen and cbindgen vendor tarballs are generated when their mirror
+      # copy is missing, and that needs the host zstd, which exists only once
+      # tools/zstd has been built. The selected packages are fetched by `make`
+      # itself in the Build step. Downloads are network-bound, so run more of
+      # them than there are CPUs. Each attempt is time-limited, because a
+      # stalled mirror never exits and so would never reach the retry; files
+      # finished by an attempt are kept for the next one.
       - name: Download sources
         id: download
         continue-on-error: true
@@ -212,7 +214,7 @@ jobs:
           mkdir -p dl
           ok=0
           for attempt in 1 2 3; do
-            if timeout 40m make -j32 tools/download toolchain/download target/download V=s; then ok=1; break; fi
+            if timeout 40m make -j32 toolchain/download target/download V=s; then ok=1; break; fi
             echo "Download attempt $attempt failed or timed out; retrying..."
             sleep 5
           done
