@@ -13,8 +13,9 @@ name: Build Athena
 #     running; each stalled download or hung tool build is bounded and retried
 #   - the host cache is rolled: entries with an older key are deleted after a
 #     successful build
-# Releases use the same prefix as build.yml, so check-updates.sh and
-# prune-releases.sh treat both workflows alike.
+# Releases carry their own tag prefix (ppe-nss-athena), separate from build.yml's
+# ppe-nss. Both scripts anchor the prefix on the tag's timestamp field, so the
+# KEEP newest releases are counted per workflow and neither prunes the other's.
 on:
   workflow_dispatch:
 
@@ -30,8 +31,10 @@ env:
   UPSTREAM_REF: ppe-nss
   NSS_REPO: JuliusBairaktaris/nss-packages
   NSS_REF: ppe-nss
+  # VARIANT selects the overlay and patch directories (files.ppe-nss,
+  # patches/*/ppe-nss), so it stays ppe-nss; only the release tag differs.
   VARIANT: ppe-nss
-  RELEASE_PREFIX: ppe-nss
+  RELEASE_PREFIX: ppe-nss-athena
   KEEP: "2"                     # newest releases to retain, per prefix
   FEEDS: |
     src-git nss https://github.com/JuliusBairaktaris/nss-packages.git;ppe-nss
@@ -104,7 +107,7 @@ jobs:
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             --draft \
-            --title "OpenWrt ${VARIANT} RE-CS-02 $date" \
+            --title "OpenWrt ${VARIANT} RE-CS-02 Athena $date" \
             --notes-file release_notes.md
 
           echo "tag=$tag" >>"$GITHUB_OUTPUT"
