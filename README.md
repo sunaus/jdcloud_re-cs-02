@@ -19,13 +19,28 @@ Actions → pick the workflow → **Run workflow** → set **Use workflow from**
 | `QCA-ALL` | `VIKINGYFY` | factory.bin + sysupgrade.bin |
 | `QCA-ALL-ppe` | `VIKINGYFY-ppe` | factory.bin + sysupgrade.bin |
 | `WRT-TEST` | `VIKINGYFY` | test / config-only builds |
-| `Build` | `JuliusBairaktaris` | sysupgrade.bin only, release tag `ppe-nss-*` |
+| `Build` | `JuliusBairaktaris` | sysupgrade.bin only, release tag `ppe-nss-<date>-*` |
+| `Build Athena` | `JuliusBairaktaris` | same image and config as `Build`, built faster; sysupgrade.bin only, release tag `ppe-nss-athena-<date>-*` |
 
 The workflow files on `main` are stubs. GitHub only offers **Run workflow** for a file that also exists on the default branch, and running a stub on `main` just fails with a pointer to the right branch.
 
+### Build vs Build Athena
+
+Both build the same image from `devices/jdcloud_re-cs-02/config` on the `JuliusBairaktaris` branch. They are independent: each publishes under its own release prefix and keeps its newest 2 releases, so they never prune each other's releases.
+
+`Build Athena` is the faster one:
+
+- the host tools and the cross toolchain are built in their own steps and cached, so a run whose tools and toolchain inputs did not change skips them (the first run, with an empty cache, is as slow as `Build`);
+- when the tree would otherwise build LLVM from source for BPF, the runner's LLVM is used instead, after a BPF smoke test; if the test fails the tree builds LLVM itself;
+- the sources cache (`dl-`) is saved only when the run fetched new files;
+- a quiet log with a 5-minute heartbeat of the longest-running processes, and bounded, retried host-tool and download steps.
+
+`Build` is the original flow and stays as the fallback.
+
 ## Maintenance
 
-- `Cache-Clean` (weekly and manual) deletes every Actions cache.
+- There is no scheduled cache clean-up. The old `Cache-Clean` workflow (weekly `gh cache delete --all`) was removed because it wiped the host tool, toolchain, ccache and source caches the builds rely on.
+- After each successful run, `Build Athena` prunes the caches of its branch: it keeps this run's host-tool and toolchain entry and the newest `dl-` and `ccache-` entry. `dl-` and `ccache-` are shared with `Build`, so older ones from `Build` go too. `Build` itself does not prune; if the 10 GB cache quota fills up, delete entries under Actions → Caches.
 - `Auto-Clean` (manual) deletes **every** release, tag and workflow run, for both branches.
 - Sync the `JuliusBairaktaris` branch from upstream with `git merge` from `JuliusBairaktaris/Qualcommax_NSS_Builder` `main`; it shares that history.
 
