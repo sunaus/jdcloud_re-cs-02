@@ -187,20 +187,23 @@ jobs:
             src-link athena ${{ github.workspace }}/athena_feed
         run: bash builder/scripts/prepare-build.sh
 
-      # Only acts when .config would build LLVM from source for BPF. The runner's
-      # LLVM must pass a BPF compile/optimise/assemble smoke test, and defconfig
-      # must keep CONFIG_BPF_TOOLCHAIN_HOST=y; if anything fails, .config is left
-      # as prepare-build.sh made it and the tree builds LLVM itself.
+      # In this tree tools/llvm-bpf is built when CONFIG_USE_LLVM_BUILD=y, and
+      # the BPF toolchain choice (toolchain/Config.in) is only settable with
+      # CONFIG_DEVEL=y. The swap therefore sets DEVEL, BPF_TOOLCHAIN_HOST and its
+      # path, and is kept only if the runner's LLVM passes a BPF smoke test,
+      # defconfig ends with USE_LLVM_HOST=y and no USE_LLVM_BUILD, and the set of
+      # selected packages and target symbols did not change. Otherwise .config is
+      # restored and the tree builds LLVM itself.
       - name: Use runner LLVM for BPF when the tree would build its own
         working-directory: openwrt
         run: |
           set -euo pipefail
-          if ! grep -q '^CONFIG_BPF_TOOLCHAIN_BUILD_LLVM=y' .config; then
-            echo "BPF toolchain is not built from source in this config; nothing to swap"
+          if ! grep -q '^CONFIG_USE_LLVM_BUILD=y' .config; then
+            echo "This config does not build LLVM from source; nothing to swap"
             exit 0
           fi
-          if ! grep -rqs 'BPF_TOOLCHAIN_HOST' config; then
-            echo "::warning::this tree has no BPF_TOOLCHAIN_HOST option; LLVM will be built from source"
+          if ! grep -q 'BPF_TOOLCHAIN_HOST' toolchain/Config.in; then
+            echo "::warning::toolchain/Config.in has no BPF_TOOLCHAIN_HOST option; LLVM will be built from source"
             exit 0
           fi
           cfg=$(command -v llvm-config || true)
@@ -226,13 +229,17 @@ jobs:
             exit 0
           fi
           cp .config .config.pre-llvm
-          sed -i '/^CONFIG_BPF_TOOLCHAIN_/d; /^# CONFIG_BPF_TOOLCHAIN_.* is not set$/d' .config
-          printf 'CONFIG_BPF_TOOLCHAIN_HOST=y\nCONFIG_BPF_TOOLCHAIN_HOST_PATH="%s"\n' "$root" >>.config
+          sed -i '/^CONFIG_BPF_TOOLCHAIN_/d; /^# CONFIG_BPF_TOOLCHAIN_.* is not set$/d; /^CONFIG_DEVEL=/d; /^# CONFIG_DEVEL is not set$/d' .config
+          printf 'CONFIG_DEVEL=y\nCONFIG_BPF_TOOLCHAIN_HOST=y\nCONFIG_BPF_TOOLCHAIN_HOST_PATH="%s"\n' "$root" >>.config
           make defconfig
-          if ! grep -qxF 'CONFIG_BPF_TOOLCHAIN_HOST=y' .config; then
+          pkgs() { grep -E '^CONFIG_(PACKAGE|TARGET)_[A-Za-z0-9_.+-]+=[ym]$' "$1" | sort; }
+          if ! grep -qxF 'CONFIG_BPF_TOOLCHAIN_HOST=y' .config ||
+             ! grep -qxF 'CONFIG_USE_LLVM_HOST=y' .config ||
+             grep -q '^CONFIG_USE_LLVM_BUILD=y' .config ||
+             ! diff <(pkgs .config.pre-llvm) <(pkgs .config) >/dev/null; then
             cp .config.pre-llvm .config
             make defconfig
-            echo "::warning::defconfig dropped CONFIG_BPF_TOOLCHAIN_HOST; LLVM will be built from source"
+            echo "::warning::host LLVM was not honoured by defconfig or changed the package set; LLVM will be built from source"
             exit 0
           fi
           echo "Using runner LLVM at $root for BPF"
@@ -251,15 +258,16 @@ jobs:
           } >>"$GITHUB_ENV"
 
       # The key covers every input of the host tools and the toolchain: the
-      # tools/ and toolchain/ trees, the toolchain and BPF config symbols, and
-      # the runner's compiler. A change in any of them starts from scratch.
+      # tools/ and toolchain/ trees, the toolchain, BPF/LLVM and Rust config
+      # symbols, and the runner's compiler. A change in any of them starts from
+      # scratch.
       - name: Compute host cache key
         id: hostkey
         run: |
           set -euo pipefail
           sum=$({
             git -C openwrt rev-parse HEAD:tools HEAD:toolchain
-            grep -E '^CONFIG_(ARCH|TARGET_BOARD|TARGET_SUBTARGET|TARGET_ARCH_PACKAGES|BINUTILS_|GCC_|USE_MUSL|USE_GLIBC|LIBC|BPF_TOOLCHAIN)' openwrt/.config || true
+            grep -E '^CONFIG_(ARCH|TARGET_BOARD|TARGET_SUBTARGET|TARGET_ARCH_PACKAGES|BINUTILS_|GCC_|USE_MUSL|USE_GLIBC|LIBC|BPF_TOOLCHAIN|USE_LLVM_|USE_RUST_|BUILD_BINDGEN)' openwrt/.config || true
             gcc --version; as --version
           } | sha256sum | cut -c1-16)
           echo "key=athena-host-${{ env.VARIANT }}-$sum" >>"$GITHUB_OUTPUT"
