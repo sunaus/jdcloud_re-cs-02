@@ -11,8 +11,11 @@ name: Build Athena
 #     runner's LLVM is used instead (checked with a BPF smoke test first)
 #   - quiet curl and a 5-minute heartbeat keep the log small and show what is
 #     running; each stalled download or hung tool build is bounded and retried
-#   - the host cache is rolled: entries with an older key are deleted after a
-#     successful build
+#   - the sources cache (dl-) is saved only when the run fetched files the
+#     restored entry did not have
+#   - after a successful build, cache-roll deletes older host-tool, dl- and
+#     ccache- entries, so the repository cache quota is not eaten by copies
+#     (there is no scheduled 'delete all caches' workflow any more)
 # Releases carry their own tag prefix (ppe-nss-athena), separate from build.yml's
 # ppe-nss. Both scripts anchor the prefix on the tag's timestamp field, so the
 # KEEP newest releases are counted per workflow and neither prunes the other's.
@@ -289,6 +292,11 @@ jobs:
           key: dl-${{ github.run_id }}
           restore-keys: dl-
 
+      - name: Count restored sources
+        id: dlbefore
+        run: |
+          echo "n=$(find openwrt/dl -maxdepth 1 -type f 2>/dev/null | wc -l)" >>"$GITHUB_OUTPUT"
+
       # Bounded and retried: a hung tool build fails the attempt, not the job.
       # A tool that is already installed makes this a no-op after a cache hit.
       - name: Build host tools
@@ -377,9 +385,21 @@ jobs:
           make -j"$(nproc)" || make -j1 V=s
           staging_dir/host/bin/ccache -s
 
-      # Saved even when the build failed, so a re-run continues from here.
-      - name: Save sources
+      # Saved even when the build failed, so a re-run continues from here, but
+      # only if the run fetched files the restored entry did not have.
+      - name: Check whether sources grew
+        id: dlafter
         if: always()
+        run: |
+          after=$(find openwrt/dl -maxdepth 1 -type f 2>/dev/null | wc -l)
+          if [ "$after" -gt "${{ steps.dlbefore.outputs.n || 0 }}" ]; then
+            echo "grew=1" >>"$GITHUB_OUTPUT"
+          else
+            echo "grew=0" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Save sources
+        if: always() && steps.dlafter.outputs.grew == '1'
         uses: actions/cache/save@v6
         with:
           path: openwrt/dl
@@ -450,12 +470,15 @@ jobs:
           set -euo pipefail
           PREFIX="$RELEASE_PREFIX" STATS=0 bash scripts/prune-releases.sh
 
+  # Runs only after a successful build. Host tools and toolchain: keep this
+  # run's exact key. dl- and ccache-: keep only the newest entry of each, since
+  # every run adds one and each can be several GB.
   cache-roll:
-    name: Roll host cache
+    name: Prune old caches
     needs: build
     if: needs.build.result == 'success'
     runs-on: ubuntu-26.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       actions: write
       contents: read
@@ -463,13 +486,22 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       CURRENT_KEY: ${{ needs.build.outputs.host_key }}
     steps:
-      - name: Delete older host cache entries
+      - name: Delete older cache entries
         continue-on-error: true
         run: |
           set -euo pipefail
-          gh cache list --repo "$GITHUB_REPOSITORY" --key "athena-host-" --limit 100 --json id,key --jq '.[] | [.id, .key] | @tsv' |
+
+          gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "athena-host-" --limit 100 --json id,key --jq '.[] | [.id, .key] | @tsv' |
             while IFS=$'\t' read -r id key; do
               [ -n "$id" ] || continue
               [ "$key" = "$CURRENT_KEY" ] && continue
               gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id ($key)"
             done
+
+          for prefix in dl- ccache-; do
+            gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$prefix" --limit 100 --json id,key,createdAt --jq 'sort_by(.createdAt) | reverse | .[1:][] | [.id, .key] | @tsv' |
+              while IFS=$'\t' read -r id key; do
+                [ -n "$id" ] || continue
+                gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id ($key)"
+              done
+          done
