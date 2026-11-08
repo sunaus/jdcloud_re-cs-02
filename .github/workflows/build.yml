@@ -119,14 +119,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       DEVICE: ${{ matrix.device }}
       TAG: ${{ needs.release.outputs.tag }}
-      # scripts/download.pl passes this to curl. Its own options only bound the
-      # connect time, so a transfer that stalls after connecting would hang the
-      # build for ever. Give up on a transfer below 2 KB/s for 30 s (curl
-      # retries it, then download.pl tries the next mirror), or running past an
-      # hour. -sS drops the progress meter, which would otherwise add one log
-      # line per update and make the log too big for the web page to follow,
-      # but still prints errors.
-      CURL_OPTIONS: "-sS --speed-limit 2048 --speed-time 30 --max-time 3600"
     steps:
       - name: Install build dependencies
         run: |
@@ -201,66 +193,29 @@ jobs:
           key: dl-${{ github.run_id }}
           restore-keys: dl-
 
-      # The host tools are built on their own, first, under a time limit so a
-      # hang fails the step instead of eating the job. They cannot be
-      # pre-downloaded with `make tools/download`: the bindgen and cbindgen
-      # vendor tarballs are generated when their mirror copy is missing, and
-      # that needs the host zstd, which exists only once tools/zstd has been
-      # built. No V=s here: it prints every compile and link command in full
-      # (the libressl link line alone is several KB), which made the log too
-      # big for the web page to keep up. The heartbeat prints the longest-
-      # running compile, download and cargo processes every 5 minutes, so a
-      # stall can be told from a long compile.
-      - name: Build host tools
-        timeout-minutes: 130
-        working-directory: openwrt
-        run: |
-          set -euo pipefail
-          heartbeat() {
-            while sleep 300; do
-              echo "== heartbeat $(date -u +%H:%M:%S), longest-running compile/download processes:"
-              { ps -eo etimes,pcpu,args --sort=-etimes | grep -E 'cc1|g\+\+|/gcc|cargo|rustc|curl|cmake|ninja' | grep -v grep | head -8 | cut -c1-200; } || true
-            done
-          }
-          heartbeat &
-          hb=$!
-          trap 'kill "$hb" 2>/dev/null || true' EXIT
-          ok=0
-          for attempt in 1 2; do
-            if timeout 60m make -j"$(nproc)" tools/install; then ok=1; break; fi
-            echo "Host tools attempt $attempt failed or timed out; retrying..."
-            sleep 5
-          done
-          [ "$ok" = 1 ]
-
-      # Pre-download only the toolchain and the target (kernel). A plain
-      # `make download` also fetches the sources of packages this image does
-      # not select (broadcom-wl alone is 86 MB); those are fetched by `make`
-      # itself in the Build step. Downloads are network-bound, so run more of
-      # them than there are CPUs. Each attempt is time-limited, because a
-      # stalled mirror never exits and so would never reach the retry; files
-      # finished by an attempt are kept for the next one.
       - name: Download sources
         id: download
-        continue-on-error: true
-        timeout-minutes: 120
         working-directory: openwrt
         run: |
           set -euo pipefail
           mkdir -p dl
-          ok=0
+          before=$(find dl -maxdepth 1 -type f | wc -l)
           for attempt in 1 2 3; do
-            if timeout 40m make -j32 toolchain/download target/download V=s; then ok=1; break; fi
-            echo "Download attempt $attempt failed or timed out; retrying..."
+            make download -j"$(nproc)" V=s && break
+            echo "Download attempt $attempt failed; retrying..."
             sleep 5
           done
-          [ "$ok" = 1 ]
+          echo "grew=$(($(find dl -maxdepth 1 -type f | wc -l) > before))" >>"$GITHUB_OUTPUT"
 
-      - name: Fail if download incomplete
-        if: steps.download.outcome != 'success'
-        run: |
-          echo "::error::source download did not complete; re-run the job, the sources downloaded so far are kept"
-          exit 1
+      # One entry per run that fetched something new: the first job to get here
+      # saves, the others find the key taken. Each job restores the newest
+      # entry, so it grows to the union of every group's sources.
+      - name: Save sources
+        if: steps.download.outputs.grew == 1
+        uses: actions/cache/save@v6
+        with:
+          path: openwrt/dl
+          key: dl-${{ github.run_id }}
 
       # ccache hashes neither the assembler nor cc1, so the key covers every
       # toolchain input and a change there starts from an empty cache. GitHub
@@ -291,29 +246,8 @@ jobs:
           CCACHE_MAXSIZE: 4G
         run: |
           set -euo pipefail
-          heartbeat() {
-            while sleep 300; do
-              echo "== heartbeat $(date -u +%H:%M:%S), longest-running compile/download processes:"
-              { ps -eo etimes,pcpu,args --sort=-etimes | grep -E 'cc1|g\+\+|/gcc|cargo|rustc|curl|cmake|ninja' | grep -v grep | head -8 | cut -c1-200; } || true
-            done
-          }
-          heartbeat &
-          hb=$!
-          trap 'kill "$hb" 2>/dev/null || true' EXIT
           make -j"$(nproc)" || make -j1 V=s
           staging_dir/host/bin/ccache -s
-
-      # One entry per run attempt, saved after the build so it holds the
-      # package sources `make` fetched too, and saved even when the download or
-      # the build failed or was cut short. Each job restores the newest entry,
-      # so a re-run continues from here. Entries count against the repository
-      # cache quota: delete old dl- entries from the Caches page now and then.
-      - name: Save sources
-        if: always()
-        uses: actions/cache/save@v6
-        with:
-          path: openwrt/dl
-          key: dl-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload images
         run: |

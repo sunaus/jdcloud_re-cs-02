@@ -1,0 +1,472 @@
+name: Build Athena
+
+# Same image, config and release flow as build.yml (JDCloud RE-CS-02, ppe-nss,
+# default flavour, manual dispatch), built faster:
+#   check -> draft release -> build -> publish -> prune
+# What differs from build.yml:
+#   - the host tools and the cross toolchain are built in their own steps and
+#     cached (staging_dir/host, hostpkg, toolchain-*), so a run whose tools and
+#     toolchain inputs did not change skips them
+#   - when the tree would otherwise build LLVM from source for BPF, the
+#     runner's LLVM is used instead (checked with a BPF smoke test first)
+#   - quiet curl and a 5-minute heartbeat keep the log small and show what is
+#     running; each stalled download or hung tool build is bounded and retried
+#   - the host cache is rolled: entries with an older key are deleted after a
+#     successful build
+# Releases use the same prefix as build.yml, so check-updates.sh and
+# prune-releases.sh treat both workflows alike.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-athena-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  UPSTREAM_REPO: JuliusBairaktaris/openwrt-ppe-nss
+  UPSTREAM_REF: ppe-nss
+  NSS_REPO: JuliusBairaktaris/nss-packages
+  NSS_REF: ppe-nss
+  VARIANT: ppe-nss
+  RELEASE_PREFIX: ppe-nss
+  KEEP: "2"                     # newest releases to retain, per prefix
+  FEEDS: |
+    src-git nss https://github.com/JuliusBairaktaris/nss-packages.git;ppe-nss
+    src-git luci https://github.com/JuliusBairaktaris/luci.git;luci-app-ppe-qos
+  # luci-app-athena-led is not in any OpenWrt feed; taken from here instead.
+  ATHENA_REPO: VIKINGYFY/immortalwrt
+  ATHENA_REF: main
+
+jobs:
+  check:
+    name: Check upstream
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      EVENT_NAME: ${{ github.event_name }}
+    outputs:
+      upstream_sha: ${{ steps.check.outputs.upstream_sha }}
+      nss_sha: ${{ steps.check.outputs.nss_sha }}
+      need: ${{ steps.check.outputs.need }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: bash scripts/check-updates.sh
+
+  release:
+    name: Create draft release
+    needs: check
+    if: needs.check.outputs.need == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UPSTREAM_SHA: ${{ needs.check.outputs.upstream_sha }}
+      NSS_SHA: ${{ needs.check.outputs.nss_sha }}
+    outputs:
+      tag: ${{ steps.draft.outputs.tag }}
+    steps:
+      - id: draft
+        run: |
+          set -euo pipefail
+          date=$(date -u +%F)
+          stamp=$(date -u +%Y%m%dT%H%M%SZ)
+          tag="${RELEASE_PREFIX}-${stamp}-${GITHUB_RUN_ID}"
+
+          {
+            echo "## OpenWrt Build — ${VARIANT}, JDCloud RE-CS-02 (AX6600)"
+            echo "- **Date**: $date"
+            echo "- **Variant**: \`${VARIANT}\`"
+            echo "- **Target**: \`qualcommax/ipq60xx\`, \`jdcloud_re-cs-02\`"
+            echo "- **Upstream**: \`${UPSTREAM_REPO}@${UPSTREAM_SHA}\`"
+            if [[ -n "${NSS_SHA}" ]]; then
+              echo "- **NSS**: \`${NSS_SHA}\`"
+            fi
+            echo "- **Workflow**: \`build-athena\`"
+            echo "- **Trigger**: \`${GITHUB_EVENT_NAME}\`"
+            echo
+            echo "Flash the \`...-jdcloud_re-cs-02-squashfs-sysupgrade.bin\` asset over an"
+            echo "existing OpenWrt/ImmortalWrt install, without keeping settings when coming"
+            echo "from ImmortalWrt. This is a sysupgrade image only - there is no factory image."
+            echo
+            echo "Wired offload runs in the PPE through the fw4 flowtable, switchdev"
+            echo "and tc. The NSS Wi-Fi offload is on by default; turn it off with"
+            echo "\`uci set nss-wifi.general.offload=0; uci commit nss-wifi; reboot\`."
+          } >release_notes.md
+
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --title "OpenWrt ${VARIANT} RE-CS-02 $date" \
+            --notes-file release_notes.md
+
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.device }}
+    needs: [check, release]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [jdcloud_re-cs-02]
+    outputs:
+      host_key: ${{ steps.hostkey.outputs.key }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEVICE: ${{ matrix.device }}
+      TAG: ${{ needs.release.outputs.tag }}
+      # scripts/download.pl passes this to curl. Give up on a transfer below
+      # 2 KB/s for 30 s (curl retries, then download.pl tries the next mirror)
+      # or running past an hour. -sS drops the progress meter but keeps errors.
+      CURL_OPTIONS: "-sS --speed-limit 2048 --speed-time 30 --max-time 3600"
+    steps:
+      # clang, llvm and lld are only used if the tree would build LLVM for BPF.
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update || true
+          sudo apt-get install -y \
+            bzip2 clang g++ gawk gcc git glibc-source libncurses-dev lld llvm make rsync
+
+      - name: Write heartbeat helper
+        run: |
+          cat >"$RUNNER_TEMP/heartbeat.sh" <<'EOF'
+          while sleep 300; do
+            echo "== heartbeat $(date -u +%H:%M:%S), longest-running compile/download processes:"
+            ps -eo etimes,pcpu,args --sort=-etimes | awk '/cc1|g\+\+|cargo|rustc|curl|cmake|ninja/ && !/awk/ { print substr($0,1,200); if (++n == 8) exit }' || true
+          done
+          EOF
+          echo "HEARTBEAT=$RUNNER_TEMP/heartbeat.sh" >>"$GITHUB_ENV"
+
+      - name: Checkout OpenWrt source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.UPSTREAM_REPO }}
+          ref: ${{ needs.check.outputs.upstream_sha }}
+          fetch-depth: 0
+          path: openwrt
+
+      - name: Add luci-app-athena-led
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --filter=blob:none --sparse --branch "$ATHENA_REF" \
+            "https://github.com/${ATHENA_REPO}.git" athena_src
+          git -C athena_src sparse-checkout set package/emortal/luci-app-athena-led
+          mkdir -p athena_feed
+          cp -a athena_src/package/emortal/luci-app-athena-led athena_feed/
+          rm -rf athena_src
+
+      - name: Checkout builder repo
+        uses: actions/checkout@v7
+        with:
+          path: builder
+
+      - name: Prepare build environment
+        env:
+          OPENWRT_DIR: ${{ github.workspace }}/openwrt
+          BUILDER_REPO: ${{ github.workspace }}/builder
+          FEEDS: |
+            ${{ env.FEEDS }}
+            src-link athena ${{ github.workspace }}/athena_feed
+        run: bash builder/scripts/prepare-build.sh
+
+      # Only acts when .config would build LLVM from source for BPF. The runner's
+      # LLVM must pass a BPF compile/optimise/assemble smoke test, and defconfig
+      # must keep CONFIG_BPF_TOOLCHAIN_HOST=y; if anything fails, .config is left
+      # as prepare-build.sh made it and the tree builds LLVM itself.
+      - name: Use runner LLVM for BPF when the tree would build its own
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          if ! grep -q '^CONFIG_BPF_TOOLCHAIN_BUILD_LLVM=y' .config; then
+            echo "BPF toolchain is not built from source in this config; nothing to swap"
+            exit 0
+          fi
+          if ! grep -rqs 'BPF_TOOLCHAIN_HOST' config; then
+            echo "::warning::this tree has no BPF_TOOLCHAIN_HOST option; LLVM will be built from source"
+            exit 0
+          fi
+          cfg=$(command -v llvm-config || true)
+          [ -n "$cfg" ] || cfg=$(ls /usr/bin/llvm-config-* 2>/dev/null | sort -V | tail -n1 || true)
+          if [ -z "$cfg" ]; then
+            echo "::warning::no llvm-config on the runner; LLVM will be built from source"
+            exit 0
+          fi
+          root=$("$cfg" --prefix)
+          for t in clang llc opt llvm-dis llvm-strip; do
+            if [ ! -x "$root/bin/$t" ]; then
+              echo "::warning::$root/bin/$t is missing; LLVM will be built from source"
+              exit 0
+            fi
+          done
+          smoke=$(mktemp -d)
+          printf 'int bpf_smoke(void) { return 0; }\n' >"$smoke/s.c"
+          if ! { "$root/bin/clang" --target=bpfel -O2 -emit-llvm -c "$smoke/s.c" -o "$smoke/s.bc" &&
+                 "$root/bin/opt" -O2 -mtriple=bpfel <"$smoke/s.bc" >"$smoke/s.opt" &&
+                 "$root/bin/llvm-dis" <"$smoke/s.opt" >"$smoke/s.S" &&
+                 "$root/bin/llc" -march=bpfel -mcpu=v3 -filetype=obj -o "$smoke/s.o" <"$smoke/s.S"; }; then
+            echo "::warning::runner LLVM failed the BPF smoke test; LLVM will be built from source"
+            exit 0
+          fi
+          cp .config .config.pre-llvm
+          sed -i '/^CONFIG_BPF_TOOLCHAIN_/d; /^# CONFIG_BPF_TOOLCHAIN_.* is not set$/d' .config
+          printf 'CONFIG_BPF_TOOLCHAIN_HOST=y\nCONFIG_BPF_TOOLCHAIN_HOST_PATH="%s"\n' "$root" >>.config
+          make defconfig
+          if ! grep -qxF 'CONFIG_BPF_TOOLCHAIN_HOST=y' .config; then
+            cp .config.pre-llvm .config
+            make defconfig
+            echo "::warning::defconfig dropped CONFIG_BPF_TOOLCHAIN_HOST; LLVM will be built from source"
+            exit 0
+          fi
+          echo "Using runner LLVM at $root for BPF"
+          "$root/bin/clang" --version | head -n1
+
+      - name: Set reproducible-build env
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          {
+            echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)"
+            echo "TZ=UTC"
+            echo "LC_ALL=C"
+            echo "KBUILD_BUILD_USER=builder"
+            echo "KBUILD_BUILD_HOST=github"
+          } >>"$GITHUB_ENV"
+
+      # The key covers every input of the host tools and the toolchain: the
+      # tools/ and toolchain/ trees, the toolchain and BPF config symbols, and
+      # the runner's compiler. A change in any of them starts from scratch.
+      - name: Compute host cache key
+        id: hostkey
+        run: |
+          set -euo pipefail
+          sum=$({
+            git -C openwrt rev-parse HEAD:tools HEAD:toolchain
+            grep -E '^CONFIG_(ARCH|TARGET_BOARD|TARGET_SUBTARGET|TARGET_ARCH_PACKAGES|BINUTILS_|GCC_|USE_MUSL|USE_GLIBC|LIBC|BPF_TOOLCHAIN)' openwrt/.config || true
+            gcc --version; as --version
+          } | sha256sum | cut -c1-16)
+          echo "key=athena-host-${{ env.VARIANT }}-$sum" >>"$GITHUB_OUTPUT"
+
+      - name: Restore host tools and toolchain
+        id: hostcache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/hostpkg
+            openwrt/staging_dir/toolchain-*
+          key: ${{ steps.hostkey.outputs.key }}
+
+      # make rebuilds a stage whose stamp is older than its inputs, and a cache
+      # restore gives every file a fresh mtime in arbitrary order.
+      - name: Refresh restored stamps
+        if: steps.hostcache.outputs.cache-hit == 'true'
+        run: |
+          set -euo pipefail
+          find openwrt/staging_dir -type d -name stamp -not -path '*target*' | while read -r dir; do
+            find "$dir" -type f -exec touch {} +
+          done
+          echo "restored host cache: ${{ steps.hostkey.outputs.key }}"
+
+      - name: Restore sources
+        uses: actions/cache/restore@v6
+        with:
+          path: openwrt/dl
+          key: dl-${{ github.run_id }}
+          restore-keys: dl-
+
+      # Bounded and retried: a hung tool build fails the attempt, not the job.
+      # A tool that is already installed makes this a no-op after a cache hit.
+      - name: Build host tools
+        timeout-minutes: 150
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          bash "$HEARTBEAT" &
+          hb=$!
+          trap 'kill "$hb" 2>/dev/null || true' EXIT
+          ok=0
+          for attempt in 1 2; do
+            if timeout 70m make -j"$(nproc)" tools/install; then ok=1; break; fi
+            echo "Host tools attempt $attempt failed or timed out; retrying..."
+            sleep 5
+          done
+          [ "$ok" = 1 ]
+
+      # Only the toolchain and the kernel are fetched up front; make fetches the
+      # selected packages itself, so unselected packages are never downloaded.
+      - name: Download toolchain and kernel sources
+        timeout-minutes: 120
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          mkdir -p dl
+          ok=0
+          for attempt in 1 2 3; do
+            if timeout 40m make -j32 toolchain/download target/download; then ok=1; break; fi
+            echo "Download attempt $attempt failed or timed out; retrying..."
+            sleep 5
+          done
+          [ "$ok" = 1 ]
+
+      - name: Build toolchain
+        timeout-minutes: 120
+        working-directory: openwrt
+        run: |
+          set -euo pipefail
+          bash "$HEARTBEAT" &
+          hb=$!
+          trap 'kill "$hb" 2>/dev/null || true' EXIT
+          make -j"$(nproc)" toolchain/install
+
+      # Saved as soon as the tools and the toolchain are built, so a later
+      # failure in the package build does not lose them.
+      - name: Save host tools and toolchain
+        if: steps.hostcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/hostpkg
+            openwrt/staging_dir/toolchain-*
+          key: ${{ steps.hostkey.outputs.key }}
+
+      - name: Compute ccache key
+        id: ccache
+        run: |
+          set -euo pipefail
+          tree=$(git -C openwrt rev-parse HEAD:toolchain)
+          sum=$({
+            echo "$tree"
+            grep -E '^CONFIG_(BINUTILS|GCC|LIBC|MUSL|GLIBC)_' openwrt/.config
+            gcc --version; as --version
+          } | sha256sum | cut -c1-16)
+          echo "prefix=ccache-${{ env.VARIANT }}-$sum-" >>"$GITHUB_OUTPUT"
+
+      - name: Restore ccache
+        uses: actions/cache@v6
+        with:
+          path: openwrt/.ccache
+          key: ${{ steps.ccache.outputs.prefix }}${{ github.run_id }}
+          restore-keys: ${{ steps.ccache.outputs.prefix }}
+
+      - name: Build
+        working-directory: openwrt
+        env:
+          CCACHE_COMPILERCHECK: content
+          CCACHE_MAXSIZE: 4G
+        run: |
+          set -euo pipefail
+          bash "$HEARTBEAT" &
+          hb=$!
+          trap 'kill "$hb" 2>/dev/null || true' EXIT
+          make -j"$(nproc)" || make -j1 V=s
+          staging_dir/host/bin/ccache -s
+
+      # Saved even when the build failed, so a re-run continues from here.
+      - name: Save sources
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: openwrt/dl
+          key: dl-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Upload images
+        run: |
+          set -euo pipefail
+          out=$(dirname "$(find openwrt/bin/targets -name sha256sums)")
+
+          mapfile -t assets < <(find "$out" -maxdepth 1 -type f -name 'openwrt-*-squashfs-sysupgrade.bin')
+          [[ ${#assets[@]} -gt 0 ]] || { echo "::error::no sysupgrade images in $out"; exit 1; }
+          grep 'sysupgrade.bin' "$out/sha256sums" >"sha256sums-${DEVICE}.txt"
+          cp "$out/config.buildinfo" "config-${DEVICE}.buildinfo"
+
+          for attempt in 1 2 3; do
+            gh release upload "$TAG" \
+              --repo "$GITHUB_REPOSITORY" --clobber \
+              "${assets[@]}" "sha256sums-${DEVICE}.txt" "config-${DEVICE}.buildinfo" && break
+            [[ $attempt -lt 3 ]] || { echo "::error::upload failed after $attempt attempts"; exit 1; }
+            echo "::warning::upload attempt $attempt failed; retrying"
+            sleep 15
+          done
+
+          {
+            echo "## ${DEVICE}"
+            echo "- assets: ${#assets[@]}"
+            echo "- host cache hit: ${{ steps.hostcache.outputs.cache-hit == 'true' }}"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish release
+    needs: [release, build]
+    if: always() && needs.release.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.release.outputs.tag }}
+      BUILD_RESULT: ${{ needs.build.result }}
+    steps:
+      - name: Publish or discard
+        run: |
+          set -euo pipefail
+          if [[ "$BUILD_RESULT" != "success" ]]; then
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes
+            echo "::error::the build failed ($BUILD_RESULT); draft release discarded"
+            exit 1
+          fi
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+  prune:
+    name: Prune old releases
+    needs: publish
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prune
+        run: |
+          set -euo pipefail
+          PREFIX="$RELEASE_PREFIX" STATS=0 bash scripts/prune-releases.sh
+
+  cache-roll:
+    name: Roll host cache
+    needs: build
+    if: needs.build.result == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CURRENT_KEY: ${{ needs.build.outputs.host_key }}
+    steps:
+      - name: Delete older host cache entries
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gh cache list --repo "$GITHUB_REPOSITORY" --key "athena-host-" --limit 100 --json id,key --jq '.[] | [.id, .key] | @tsv' |
+            while IFS=$'\t' read -r id key; do
+              [ -n "$id" ] || continue
+              [ "$key" = "$CURRENT_KEY" ] && continue
+              gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id ($key)"
+            done
