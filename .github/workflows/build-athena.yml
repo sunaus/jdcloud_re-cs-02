@@ -442,6 +442,10 @@ jobs:
       # of them again. The tools stamp is the shortcut make itself takes (via
       # `prepare`): it skips the work when nothing under tools/ is newer than the
       # stamp, and otherwise runs tools/compile and touches the stamp.
+      # make's val.% rule cannot take a name with a slash (make strips the
+      # directory part before matching the pattern), so the stamp path is read
+      # through a command-line variable that make expands once everything is
+      # loaded.
       - name: Build host tools
         timeout-minutes: 150
         working-directory: openwrt
@@ -450,7 +454,7 @@ jobs:
           bash "$HEARTBEAT" &
           hb=$!
           trap 'kill "$hb" 2>/dev/null || true' EXIT
-          stamp=$(make -s val.tools/stamp-compile 2>/dev/null | tail -n 1 || true)
+          stamp=$(make -s val.ATHENA_STAMP 'ATHENA_STAMP=$(tools/stamp-compile)' 2>/dev/null | tail -n 1 || true)
           case "$stamp" in
             */staging_dir/host/stamp/.tools_compile*)
               target="$stamp"
@@ -499,7 +503,7 @@ jobs:
           bash "$HEARTBEAT" &
           hb=$!
           trap 'kill "$hb" 2>/dev/null || true' EXIT
-          stamp=$(make -s val.toolchain/stamp-compile 2>/dev/null | tail -n 1 || true)
+          stamp=$(make -s val.ATHENA_STAMP 'ATHENA_STAMP=$(toolchain/stamp-compile)' 2>/dev/null | tail -n 1 || true)
           case "$stamp" in
             */staging_dir/toolchain-*/stamp/.toolchain_compile*)
               target="$stamp"
@@ -666,6 +670,6 @@ jobs:
             gh cache list --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF" --key "$prefix" --limit 100 --json id,key,createdAt --jq 'sort_by(.createdAt) | reverse | .[1:][] | [.id, .key] | @tsv' |
               while IFS=$'\t' read -r id key; do
                 [ -n "$id" ] || continue
-                gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id ($key)"
+                gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || echo "warning: could not delete cache $id"
               done
           done
