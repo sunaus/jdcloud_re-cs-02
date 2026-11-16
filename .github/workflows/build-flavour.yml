@@ -122,7 +122,7 @@ jobs:
               echo "## OpenWrt Build — ${name}"
               echo "- **Date**: $date"
               echo "- **Variant**: \`${name}\`"
-              echo "- **Targets**: \`qualcommax/ipq807x\`, \`qualcommax/ipq60xx\`"
+              echo "- **Target**: \`qualcommax/ipq60xx\`, \`jdcloud_re-cs-02\`"
               echo "- **Upstream**: \`${UPSTREAM_REPO}@${UPSTREAM_SHA}\`"
               if [[ -n "${NSS_SHA}" ]]; then
                 echo "- **NSS**: \`${NSS_SHA}\`"
@@ -216,6 +216,18 @@ jobs:
             ${{ env.FEEDS }}
             src-link athena ${{ github.workspace }}/athena_feed
         run: bash builder/scripts/prepare-build.sh
+
+      # The updater needs /etc/ppe-release, which only the upstream flavour
+      # build writes; without it the page and the init script are dead weight.
+      - name: Drop the ppe-update overlay
+        run: |
+          set -euo pipefail
+          cd openwrt/files
+          rm -f etc/config/ppe-update etc/init.d/ppe-update etc/uci-defaults/zz-ppe-update \
+            lib/upgrade/keep.d/ppe-update usr/sbin/ppe-update \
+            usr/share/rpcd/acl.d/luci-app-ppe-update.json \
+            usr/share/luci/menu.d/luci-app-ppe-update.json \
+            www/luci-static/resources/view/system/ppe-update.js
 
       # The tree pins sqm-scripts to a commit and its hash; this flavour follows the fork's
       # branch instead, so a force-pushed PR branch does not break the build. The commit is

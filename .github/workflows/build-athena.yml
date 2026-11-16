@@ -191,6 +191,18 @@ jobs:
             src-link athena ${{ github.workspace }}/athena_feed
         run: bash builder/scripts/prepare-build.sh
 
+      # The updater needs /etc/ppe-release, which only the upstream flavour
+      # build writes; without it the page and the init script are dead weight.
+      - name: Drop the ppe-update overlay
+        run: |
+          set -euo pipefail
+          cd openwrt/files
+          rm -f etc/config/ppe-update etc/init.d/ppe-update etc/uci-defaults/zz-ppe-update \
+            lib/upgrade/keep.d/ppe-update usr/sbin/ppe-update \
+            usr/share/rpcd/acl.d/luci-app-ppe-update.json \
+            usr/share/luci/menu.d/luci-app-ppe-update.json \
+            www/luci-static/resources/view/system/ppe-update.js
+
       # In this tree tools/llvm-bpf is built when CONFIG_USE_LLVM_BUILD=y, and
       # the BPF toolchain choice (toolchain/Config.in) is only settable with
       # CONFIG_DEVEL=y. The version the tree builds is PKG_VERSION in
