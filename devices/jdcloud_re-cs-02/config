@@ -192,6 +192,6 @@ CONFIG_PACKAGE_kmod-ath11k-pci=y
 ## its apk feed and an ImageBuilder (IB) for the image picker. This repo
 ## publishes neither, and building them multiplies the build time and the
 ## cache size, so both stay off.
-# CONFIG_ALL_KMODS is not set
-# CONFIG_IB is not set
-# CONFIG_IB_STANDALONE is not set
+CONFIG_ALL_KMODS=n
+CONFIG_IB=n
+CONFIG_IB_STANDALONE=n
