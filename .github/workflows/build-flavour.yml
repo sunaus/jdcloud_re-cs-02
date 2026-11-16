@@ -73,6 +73,7 @@ jobs:
 
   stats:
     name: Download stats
+    if: false
     needs: check
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -193,10 +194,27 @@ jobs:
         with:
           path: builder
 
+      # luci-app-athena-led is not in any OpenWrt feed; same source as build-athena.yml.
+      - name: Add luci-app-athena-led
+        env:
+          ATHENA_REPO: VIKINGYFY/immortalwrt
+          ATHENA_REF: main
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --filter=blob:none --sparse --branch "$ATHENA_REF" \
+            "https://github.com/${ATHENA_REPO}.git" athena_src
+          git -C athena_src sparse-checkout set package/emortal/luci-app-athena-led
+          mkdir -p athena_feed
+          cp -a athena_src/package/emortal/luci-app-athena-led athena_feed/
+          rm -rf athena_src
+
       - name: Prepare build environment
         env:
           OPENWRT_DIR: ${{ github.workspace }}/openwrt
           BUILDER_REPO: ${{ github.workspace }}/builder
+          FEEDS: |
+            ${{ env.FEEDS }}
+            src-link athena ${{ github.workspace }}/athena_feed
         run: bash builder/scripts/prepare-build.sh
 
       # The tree pins sqm-scripts to a commit and its hash; this flavour follows the fork's
@@ -220,6 +238,7 @@ jobs:
       # public-key.pem). Without the secret, OpenWrt makes a key per build.
       # /etc/ppe-release tells ppe-update where its newer images are.
       - name: Point the image at its kmod feed
+        if: false
         working-directory: openwrt
         env:
           APK_SIGN_KEY: ${{ secrets.APK_SIGN_KEY }}
@@ -338,13 +357,6 @@ jobs:
           [[ ${#assets[@]} -gt 0 ]] || { echo "::error::no sysupgrade images in $out"; exit 1; }
           grep 'sysupgrade.bin' "$out/sha256sums" >"sha256sums-${DEVICE}.txt"
           cp "$out/config.buildinfo" "config-${DEVICE}.buildinfo"
-          # The ImageBuilder and the overlay files are what custom.yml builds
-          # a picked package set from.
-          ib=$(find "$out" -maxdepth 1 -name 'openwrt-imagebuilder-*.tar.zst')
-          [[ -f "$ib" ]] || { echo "::error::no ImageBuilder in $out"; exit 1; }
-          mv "$ib" "imagebuilder-${DEVICE}.tar.zst"
-          tar -C openwrt/files -czf "files-${DEVICE}.tar.gz" .
-          assets+=("imagebuilder-${DEVICE}.tar.zst" "files-${DEVICE}.tar.gz")
 
           # --clobber, so re-running a job that died mid-upload is a recovery
           # and not a permanent "asset already exists".
@@ -365,6 +377,7 @@ jobs:
       # The target packages (kernel, every kmod) and their signed index, at
       # the path the image's uci-defaults points to. The feed job publishes it.
       - name: Stage kmod feed
+        if: false
         run: |
           set -euo pipefail
           pkgs="$(dirname "$(find openwrt/bin/targets -name sha256sums)")/packages"
@@ -376,6 +389,7 @@ jobs:
           echo "- feed: $(find "feed/$TAG/$DEVICE" -name '*.apk' | wc -l) packages, $(du -sh "feed/$TAG/$DEVICE" | cut -f1)" >>"$GITHUB_STEP_SUMMARY"
 
       - name: Upload kmod feed
+        if: false
         uses: actions/upload-artifact@v7
         with:
           name: feed-${{ inputs.release_prefix }}-${{ matrix.device }}
@@ -424,10 +438,11 @@ jobs:
       - name: Prune
         run: |
           set -euo pipefail
-          PREFIX="$RELEASE_PREFIX" bash scripts/prune-releases.sh
+          PREFIX="$RELEASE_PREFIX" STATS=0 bash scripts/prune-releases.sh
 
   feed:
     name: Publish kmod feeds and the image picker
+    if: false
     needs: [release, prune]
     runs-on: ubuntu-26.04
     concurrency:
