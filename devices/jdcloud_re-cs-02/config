@@ -187,3 +187,11 @@ CONFIG_PACKAGE_kmod-wireguard=y
 CONFIG_PACKAGE_kmod-ath11k=y
 CONFIG_PACKAGE_kmod-ath11k-ahb=y
 CONFIG_PACKAGE_kmod-ath11k-pci=y
+
+## Upstream's devices/common/config builds every kernel module (ALL_KMODS) for
+## its apk feed and an ImageBuilder (IB) for the image picker. This repo
+## publishes neither, and building them multiplies the build time and the
+## cache size, so both stay off.
+# CONFIG_ALL_KMODS is not set
+# CONFIG_IB is not set
+# CONFIG_IB_STANDALONE is not set
