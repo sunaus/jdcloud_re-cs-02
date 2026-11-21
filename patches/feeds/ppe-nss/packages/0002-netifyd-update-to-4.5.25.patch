@@ -5,8 +5,12 @@ repository that can be built from public sources: from 4.5.26 on, 'm4' and
 'automake' are git submodules (netify-autoconf-m4-includes and
 netify-automake-includes on gitlab.com) that cannot be cloned anonymously
 ("HTTP Basic: Access denied"), so the source tarball cannot be generated.
-The source is pinned to the commit the v4.5.25 tag points at, and the
-download is not checksummed: the feed's hash belongs to 4.4.7.
+
+The source is no longer cloned from gitlab.com at build time. It is the
+tarball of the v4.5.25 commit bd2052036b6923c9209ebd2b492976d5ebfb5603 with
+its recursive submodules (libs/inih, libs/ndpi, libs/gperftools), published as
+an asset of the src-4.5.25 release of github.com/sunaus/netify-agent and
+checked with PKG_HASH.
 
 4.5.25's configure defaults the persistent state directory to /etc/netifyd,
 while the feed installs the agent's data files to /etc/netify.d and lists the
@@ -32,18 +36,19 @@ compiled with <sstream>, <cstdint> and <cstring> force-included.
  PKG_MAINTAINER:=Darryl Sokoloski <darryl@egloo.ca>
  PKG_LICENSE:=GPL-3.0-or-later
  
-@@ -18,8 +18,8 @@
+@@ -18,8 +18,7 @@
  
- PKG_SOURCE_PROTO:=git
- PKG_SOURCE_URL:=https://gitlab.com/netify.ai/public/netify-agent.git
+-PKG_SOURCE_PROTO:=git
+-PKG_SOURCE_URL:=https://gitlab.com/netify.ai/public/netify-agent.git
 -PKG_SOURCE_VERSION:=v$(PKG_VERSION)
 -PKG_MIRROR_HASH:=7c240041081d303cb68b4c3d58ccc907aef8334dc9e39a3d1c972df49533f6e7
-+PKG_SOURCE_VERSION:=bd2052036b6923c9209ebd2b492976d5ebfb5603
-+PKG_MIRROR_HASH:=skip
++PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.zst
++PKG_SOURCE_URL:=https://github.com/sunaus/netify-agent/releases/download/src-$(PKG_VERSION)
++PKG_HASH:=742a133e8a2ac1674967207bae0be754919c26ff52a5c1084ee98697665a371a
  
  PKG_CONFIG_DEPENDS:= \
  	CONFIG_NETIFYD_BUILD_SHARED_LIBRARY \
-@@ -61,7 +61,7 @@
+@@ -61,7 +60,7 @@
  endef
  
  TARGET_CFLAGS+=-Wno-psabi
@@ -52,7 +57,7 @@ compiled with <sstream>, <cstdint> and <cstring> force-included.
  
  CONFIGURE_ARGS+= \
  	$(if $(CONFIG_NETIFYD_BUILD_SHARED_LIBRARY),--enable-shared,--disable-shared) \
-@@ -68,6 +68,7 @@
+@@ -68,6 +67,7 @@
  	$(if $(CONFIG_NETIFYD_WITH_LOCAL_LIBGCRYPT),--with-local-libgcrypt,--without-local-libgcrypt) \
  	--sharedstatedir=/var/run \
  	--enable-lean-and-mean \
