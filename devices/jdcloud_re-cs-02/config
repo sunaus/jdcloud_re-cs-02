@@ -195,3 +195,10 @@ CONFIG_PACKAGE_kmod-ath11k-pci=y
 CONFIG_ALL_KMODS=n
 CONFIG_IB=n
 CONFIG_IB_STANDALONE=n
+
+## keepalived (its nftables support needs kmod-nft-dup-inet) and netifyd. The
+## official kmod feed cannot serve this kernel, and netifyd is missing from the
+## official snapshot feeds, so both are built into the image.
+CONFIG_PACKAGE_kmod-nft-dup-inet=y
+CONFIG_PACKAGE_netifyd=y
+CONFIG_PACKAGE_keepalived=y
