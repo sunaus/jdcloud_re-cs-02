@@ -1,0 +1,32 @@
+netifyd: update to 4.5.27
+
+The feed builds 4.4.7. 4.5.27 is the newest tag of the 4.x line in the
+(archived) netify-agent repository. v5 changes the layout the feed's init
+script and conffiles assume, so this stays on 4.x. The source is pinned to
+the commit the v4.5.27 tag points at, and the download is not checksummed:
+the feed's hash belongs to 4.4.7.
+
+--- a/net/netifyd/Makefile
++++ b/net/netifyd/Makefile
+@@ -6,8 +6,8 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=netifyd
+-PKG_VERSION:=4.4.7
+-PKG_RELEASE:=2
++PKG_VERSION:=4.5.27
++PKG_RELEASE:=1
+ PKG_MAINTAINER:=Darryl Sokoloski <darryl@egloo.ca>
+ PKG_LICENSE:=GPL-3.0-or-later
+ 
+@@ -18,8 +18,8 @@
+ 
+ PKG_SOURCE_PROTO:=git
+ PKG_SOURCE_URL:=https://gitlab.com/netify.ai/public/netify-agent.git
+-PKG_SOURCE_VERSION:=v$(PKG_VERSION)
+-PKG_MIRROR_HASH:=7c240041081d303cb68b4c3d58ccc907aef8334dc9e39a3d1c972df49533f6e7
++PKG_SOURCE_VERSION:=447a421bb8c7fca40d3fda400281222c32af56d4
++PKG_MIRROR_HASH:=skip
+ 
+ PKG_CONFIG_DEPENDS:= \
+ 	CONFIG_NETIFYD_BUILD_SHARED_LIBRARY \
