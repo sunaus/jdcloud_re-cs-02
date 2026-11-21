@@ -44,7 +44,7 @@ compiled with <sstream>, <cstdint> and <cstring> force-included.
 -PKG_MIRROR_HASH:=7c240041081d303cb68b4c3d58ccc907aef8334dc9e39a3d1c972df49533f6e7
 +PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.zst
 +PKG_SOURCE_URL:=https://github.com/sunaus/netify-agent/releases/download/src-$(PKG_VERSION)
-+PKG_HASH:=742a133e8a2ac1674967207bae0be754919c26ff52a5c1084ee98697665a371a
++PKG_HASH:=dc1e50c0a9b5da0273c070725f5ff2fb2434dd0b687f0ee9ef3ff7d4a1c443bf
  
  PKG_CONFIG_DEPENDS:= \
  	CONFIG_NETIFYD_BUILD_SHARED_LIBRARY \
