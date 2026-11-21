@@ -1,10 +1,20 @@
-netifyd: update to 4.5.27
+netifyd: update to 4.5.27, build it with GCC 15
 
 The feed builds 4.4.7. 4.5.27 is the newest tag of the 4.x line in the
-(archived) netify-agent repository. v5 changes the layout the feed's init
-script and conffiles assume, so this stays on 4.x. The source is pinned to
-the commit the v4.5.27 tag points at, and the download is not checksummed:
-the feed's hash belongs to 4.4.7.
+(archived) netify-agent repository. The source is pinned to the commit the
+v4.5.27 tag points at, and the download is not checksummed: the feed's hash
+belongs to 4.4.7.
+
+4.5.27's configure defaults the persistent state directory to /etc/netifyd,
+while the feed installs the agent's data files to /etc/netify.d and lists the
+UUID files there as conffiles, so the directory is passed explicitly.
+--disable-jemalloc and --disable-inotify are gone from configure.ac; configure
+only warns about unrecognized options.
+
+GCC 15's libstdc++ no longer pulls <sstream> in through other headers, so
+4.4.7 fails in nd-util.h with "field 'os' has incomplete type
+std::ostringstream". Rather than patch the sources, the C++ files are
+compiled with <sstream>, <cstdint> and <cstring> force-included.
 
 --- a/net/netifyd/Makefile
 +++ b/net/netifyd/Makefile
@@ -30,3 +40,20 @@ the feed's hash belongs to 4.4.7.
  
  PKG_CONFIG_DEPENDS:= \
  	CONFIG_NETIFYD_BUILD_SHARED_LIBRARY \
+@@ -61,7 +61,7 @@
+ endef
+ 
+ TARGET_CFLAGS+=-Wno-psabi
+-TARGET_CXXFLAGS+=-std=c++11 -Wno-psabi
++TARGET_CXXFLAGS+=-std=c++11 -Wno-psabi -include sstream -include cstdint -include cstring
+ 
+ CONFIGURE_ARGS+= \
+ 	$(if $(CONFIG_NETIFYD_BUILD_SHARED_LIBRARY),--enable-shared,--disable-shared) \
+@@ -68,6 +68,7 @@
+ 	$(if $(CONFIG_NETIFYD_WITH_LOCAL_LIBGCRYPT),--with-local-libgcrypt,--without-local-libgcrypt) \
+ 	--sharedstatedir=/var/run \
+ 	--enable-lean-and-mean \
++	--with-persistentstatedir=/etc/netify.d \
+ 	--disable-libtcmalloc \
+ 	--disable-jemalloc \
+ 	--without-systemdsystemunitdir \
