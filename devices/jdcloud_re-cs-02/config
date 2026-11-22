@@ -203,15 +203,13 @@ CONFIG_PACKAGE_kmod-nft-dup-inet=y
 CONFIG_PACKAGE_netifyd=y
 CONFIG_PACKAGE_keepalived=y
 
-## Container networking (netavark + aardvark-dns, as used by podman). The
-## snapshot feed drops them from time to time, which left them uninstallable
-## with apk, so both are built into the image.
-CONFIG_PACKAGE_netavark=y
-CONFIG_PACKAGE_aardvark-dns=y
-
-## netavark and aardvark-dns depend on @!USE_RUST_TOOLCHAIN (the feed's
-## RUST_ARCH_DEPENDS). With EXPERIMENTAL=y the tree turns USE_RUST_PREBUILT on
-## by default, which sets USE_RUST_TOOLCHAIN and makes defconfig drop both.
-## Choosing the "None" Rust toolchain builds them with the feed's rust/host.
-CONFIG_RUST_TOOLCHAINOPTS=y
-CONFIG_RUST_TOOLCHAIN_NONE=y
+## Docker: dockerd and docker are installed later with apk, but the kmods they
+## depend on cannot come from the kmods feed for this kernel, so they go into
+## the image. The list is what apk reports as "Not available" for dockerd and
+## containerd (btrfs-progs needs kmod-fs-btrfs).
+CONFIG_PACKAGE_kmod-ipt-extra=y
+CONFIG_PACKAGE_kmod-ipt-nat=y
+CONFIG_PACKAGE_kmod-ipt-nat6=y
+CONFIG_PACKAGE_kmod-ipt-physdev=y
+CONFIG_PACKAGE_kmod-ip6tables=y
+CONFIG_PACKAGE_kmod-fs-btrfs=y
