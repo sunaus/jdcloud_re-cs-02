@@ -1,0 +1,56 @@
+netifyd: keep 4.4.7, fetch its source from a self-hosted release, build it with GCC 15
+
+The feed builds 4.4.7 from a git clone of gitlab.com, with a submodule
+clone at build time. Fetch the same source as one checked file instead: the
+tarball of the v4.4.7 tag with its recursive submodules (libs/inih,
+libs/ndpi, libs/gperftools, libs/jemalloc, libs/mpack), published as an
+asset of the src-4.4.7 release of github.com/sunaus/netify-agent and
+checked with PKG_HASH. The src/nd-plugin-example submodule is left out; it
+is not part of the build and its repository can no longer be cloned
+anonymously.
+
+4.4.7 stays: from 4.5.x on, the agent no longer carries its built-in
+UNIX/TCP socket and sink (src/nd-socket.cpp and src/nd-sink.cpp are gone),
+so the [socket] section of netifyd.conf has no effect and
+luci-app-network-system-dashboard, which reads /var/run/netifyd/netifyd.sock,
+gets no data. From 4.5.26 on, 'm4' and 'automake' are also git submodules
+that cannot be cloned anonymously.
+
+GCC 15's libstdc++ no longer pulls <sstream> in through other headers, so
+4.4.7 fails in nd-util.h with "field 'os' has incomplete type
+std::ostringstream". Rather than patch the sources, the C++ files are
+compiled with <sstream>, <cstdint> and <cstring> force-included.
+
+--- a/net/netifyd/Makefile
++++ b/net/netifyd/Makefile
+@@ -6,8 +6,8 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=netifyd
+ PKG_VERSION:=4.4.7
+-PKG_RELEASE:=2
++PKG_RELEASE:=3
+ PKG_MAINTAINER:=Darryl Sokoloski <darryl@egloo.ca>
+ PKG_LICENSE:=GPL-3.0-or-later
+ 
+@@ -18,8 +18,7 @@
+ 
+-PKG_SOURCE_PROTO:=git
+-PKG_SOURCE_URL:=https://gitlab.com/netify.ai/public/netify-agent.git
+-PKG_SOURCE_VERSION:=v$(PKG_VERSION)
+-PKG_MIRROR_HASH:=7c240041081d303cb68b4c3d58ccc907aef8334dc9e39a3d1c972df49533f6e7
++PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.zst
++PKG_SOURCE_URL:=https://github.com/sunaus/netify-agent/releases/download/src-$(PKG_VERSION)
++PKG_HASH:=c473701a3bd2bba6d804daaed0aa32c6db75276c6ed1d12b87175f115dfe1f34
+ 
+ PKG_CONFIG_DEPENDS:= \
+ 	CONFIG_NETIFYD_BUILD_SHARED_LIBRARY \
+@@ -61,7 +60,7 @@
+ endef
+ 
+ TARGET_CFLAGS+=-Wno-psabi
+-TARGET_CXXFLAGS+=-std=c++11 -Wno-psabi
++TARGET_CXXFLAGS+=-std=c++11 -Wno-psabi -include sstream -include cstdint -include cstring
+ 
+ CONFIGURE_ARGS+= \
+ 	$(if $(CONFIG_NETIFYD_BUILD_SHARED_LIBRARY),--enable-shared,--disable-shared) \
