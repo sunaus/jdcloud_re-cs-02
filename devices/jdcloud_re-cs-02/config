@@ -202,3 +202,9 @@ CONFIG_IB_STANDALONE=n
 CONFIG_PACKAGE_kmod-nft-dup-inet=y
 CONFIG_PACKAGE_netifyd=y
 CONFIG_PACKAGE_keepalived=y
+
+## Container networking (netavark + aardvark-dns, as used by podman). The
+## snapshot feed drops them from time to time, which left them uninstallable
+## with apk, so both are built into the image.
+CONFIG_PACKAGE_netavark=y
+CONFIG_PACKAGE_aardvark-dns=y
